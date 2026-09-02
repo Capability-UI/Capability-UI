@@ -1,0 +1,139 @@
+# Capability UI Core
+
+Agent-neutral authorization and execution primitives for capability-driven generative interfaces.
+
+CUP does not create, host, schedule, or manage agents. It can register an existing agent runtime as a resource, assign that agent a principal identity, and govern which data and capabilities the agent may discover, read, invoke, or delegate.
+
+## What is included in v0.1
+
+- Typed resource and capability contracts
+- Separate `discover`, `inspect`, `read`, `execute`, and `delegate` operations
+- Deny-by-default policy evaluation
+- Explicit deny precedence at equal priority
+- Subject matching by ID, role, type, or wildcard
+- Authorized projections for agents and renderers
+- Schema and side-effect metadata on capabilities
+- `prepare()` and `execute()` for guarded actions
+- Confirmation binding to an input hash
+- Receipt generation through an in-memory or injected receipt sink
+- Delegation grants with purpose, expiration, operation, and scope limits
+- No dependency on an agent framework, UI framework, database, or MCP implementation
+
+## Install
+
+```bash
+npm install @capability-ui/core
+```
+
+## Read data
+
+```ts
+import { CapabilityUI, type Resource, type Subject } from '@capability-ui/core';
+
+const cup = new CapabilityUI();
+const john: Subject = {
+  id: 'user:john', type: 'user', authenticated: true,
+  attributes: { workspaceId: 'acme' }
+};
+
+const contacts: Resource = {
+  id: 'crm.contacts', type: 'data', version: '1.0',
+  sensitivity: 'confidential',
+  schema: { type: 'object' },
+  read: async ({ scope }) => db.contacts.findMany({
+    where: { workspaceId: scope?.workspaceId }
+  })
+};
+cup.register(contacts);
+
+// Discovery and reading are separate policy decisions.
+cup.policy.allow({
+  id: 'john-discover-contacts', principal: { id: john.id },
+  operation: 'discover', resource: { id: contacts.id }, priority: 10
+});
+cup.policy.allow({
+  id: 'john-read-contacts', principal: { id: john.id },
+  operation: 'read', resource: { id: contacts.id },
+  scope: { workspaceId: 'acme' }, priority: 10
+});
+
+const result = await cup.read({
+  subject: john, resource: contacts.id,
+  scope: { workspaceId: 'acme' }, fields: ['id', 'name'],
+  purpose: 'contact_lookup', context: { channel: 'web' }
+});
+```
+
+## Execute a tool
+
+```ts
+import { CapabilityUI, defineCapability, subject } from '@capability-ui/core';
+
+const cup = new CapabilityUI();
+const john = subject('user:john');
+let sent = false;
+
+cup.register(defineCapability({
+  id: 'mail.send', operation: 'execute',
+  inputSchema: { type: 'object', required: ['to', 'body'] },
+  outputSchema: { type: 'object' },
+  sensitivity: 'confidential', sideEffects: ['external_message'],
+  risk: 'high', confirmation: 'explicit', idempotency: 'required',
+  reversibility: 'irreversible',
+  handler: async input => { sent = true; return { sent, input }; }
+}));
+cup.policy.allow({
+  id: 'john-send-mail', principal: { id: john.id },
+  operation: 'execute', resource: { id: 'mail.send' }, priority: 10
+});
+
+const input = { to: ['person@example.com'], body: 'Hello' };
+const prepared = await cup.prepare({
+  subject: john, capability: 'mail.send', input,
+  purpose: 'personal_message', context: { channel: 'web' }
+});
+const receipt = await cup.execute({
+  ...prepared.request,
+  confirmation: { inputHash: prepared.inputHash, confirmedBy: john.id }
+});
+```
+
+## Use an external agent runtime
+
+CUP supplies the policy boundary, not the agent loop:
+
+```ts
+import { CapabilityUI, subject, type Resource } from '@capability-ui/core';
+
+const cup = new CapabilityUI();
+const agentResource: Resource = {
+  id: 'agent:research', type: 'agent', version: '1.0',
+  sensitivity: 'confidential', schema: {
+    type: 'object', properties: { task: { type: 'string' } }
+  }, metadata: {
+    runtime: 'external-framework', endpoint: 'https://agent.example/mcp',
+    supportedTasks: ['research'], risk: 'medium'
+  }
+};
+cup.register(agentResource);
+
+// The host supplies LangGraph, AutoGen, CrewAI, an SDK, or a custom runtime.
+// CUP authorizes the call around that runtime.
+const result = await cup.execute({
+  subject: subject('user:john'), capability: 'agent.research.invoke',
+  input: { task: 'summarize public sources' }, context: {
+    purpose: 'market_scan'
+  }
+});
+```
+
+## Development
+
+```bash
+npm install
+npm test       # build and run the Node test suite
+npm run check  # TypeScript type check without emitting files
+npm run build  # emit dist/ and declaration files
+```
+
+The package is an early semantic core. It intentionally leaves authentication, persistent policy storage, JSON Schema validation, field redaction, MCP transport, external agent adapters, and production receipt storage to subsequent packages or host integrations.
