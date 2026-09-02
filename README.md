@@ -136,4 +136,4 @@ npm run check  # TypeScript type check without emitting files
 npm run build  # emit dist/ and declaration files
 ```
 
-The package is an early semantic core. It intentionally leaves authentication, persistent policy storage, JSON Schema validation, field redaction, MCP transport, external agent adapters, and production receipt storage to subsequent packages or host integrations.
+The package is an early reference implementation. Authentication and identity proofing remain host responsibilities. Persistent policy and receipt stores, production transport deployment, and framework-specific renderers or agent-runtime adapters can be supplied through the exported interfaces.

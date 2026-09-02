@@ -1,6 +1,6 @@
 {
   "name": "@capability-ui/core",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Agent-neutral capability, policy, projection, and guarded execution core for generative interfaces.",
   "type": "module",
   "main": "dist/src/index.js",
@@ -11,15 +11,27 @@
       "import": "./dist/src/index.js"
     }
   },
-  "files": ["dist", "README.md", "LICENSE"],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "npm run build && node --test dist/test/**/*.test.js",
     "check": "tsc -p tsconfig.json --noEmit"
   },
-  "keywords": ["authorization", "capabilities", "generative-ui", "mcp", "policy"],
+  "keywords": [
+    "authorization",
+    "capabilities",
+    "generative-ui",
+    "mcp",
+    "policy"
+  ],
   "license": "MIT",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "typescript": "^5.7.0"
