@@ -17,10 +17,12 @@ export class CapabilityRegistry implements ResourceRegistry {
   private readonly resources = new Map<string, Resource>();
 
   register(resource: Resource | Capability): void { this.resources.set(resource.id, resource); }
-  get(id: string): Resource | undefined { return this.resources.get(id); }
+  get(id: string, version?: string): Resource | undefined { const resource = this.resources.get(id); return !resource || (version && resource.version !== version) ? undefined : resource; }
   list(): Resource[] { return [...this.resources.values()]; }
   getVersion(id: string): string | undefined { return this.resources.get(id)?.version; }
   ref(id: string): ResourceRef { const resource = this.resources.get(id); return { id, version: resource?.version }; }
+  listDiscoverable(): Resource[] { return this.list(); }
+  validate(id: string, input: unknown): string[] { const resource = this.resources.get(id); if (!resource) return ['RESOURCE_NOT_FOUND']; return validateShape(input, resource.schema); }
 }
 
 export class PolicyEngine {
@@ -30,11 +32,14 @@ export class PolicyEngine {
   authorize(request: AuthorizationRequest, evaluator: (request: AuthorizationRequest) => Promise<Decision> | Decision): Promise<Decision> | Decision { return evaluator(request); }
   policyVersion(): string { return this.store.version(); }
   matching(request: AuthorizationRequest): Policy[] { return this.store.matching(request); }
+  explain(request: AuthorizationRequest, evaluator: (request: AuthorizationRequest) => Promise<Decision> | Decision): Promise<{ decision: Decision; matchedPolicies: Policy[] }> | { decision: Decision; matchedPolicies: Policy[] } { const decision = evaluator(request); return decision instanceof Promise ? decision.then(value => ({ decision: value, matchedPolicies: this.matching(request) })) : { decision, matchedPolicies: this.matching(request) }; }
+  invalidate(_cacheKey?: string): void { /* PolicyStore is uncached; this is the invalidation boundary for external caches. */ }
 }
 
 export class Projector {
   constructor(private readonly cup: CapabilityUI) {}
   project(request: { subject: Subject; goal?: string; context: Record<string, unknown> }): Promise<AuthorizedView> { return this.cup.project(request); }
+  buildActionSchema(capability: Capability): Record<string, unknown> { return { id: capability.id, operation: capability.operation, inputSchema: capability.inputSchema, outputSchema: capability.outputSchema, risk: capability.risk, sideEffects: capability.sideEffects, confirmation: capability.confirmation, reversibility: capability.reversibility }; }
 }
 
 export class Executor {
@@ -48,4 +53,11 @@ export class Executor {
 
 export function createComponents(cup: CapabilityUI) {
   return { registry: new CapabilityRegistry(), policy: new PolicyEngine(cup.policy), projector: new Projector(cup), executor: new Executor(cup) };
+}
+
+function validateShape(value: unknown, schema: Record<string, unknown>, path = '$'): string[] {
+  const errors: string[] = [];
+  if (schema.type === 'object' && (!value || typeof value !== 'object' || Array.isArray(value))) return [`${path}: expected object`];
+  if (Array.isArray(schema.required) && value && typeof value === 'object') for (const key of schema.required as string[]) if (!(key in (value as object))) errors.push(`${path}.${key}: required`);
+  return errors;
 }

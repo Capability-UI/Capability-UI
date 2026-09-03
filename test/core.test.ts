@@ -85,6 +85,7 @@ test('execute validates authorization and writes a receipt', async () => {
   const receipt = await cup.execute({
     subject: john, capability: 'mail.send',
     input: { to: ['a@example.com'], body: 'Hello' },
+    idempotencyKey: 'mail-test-1',
     confirmation: { inputHash: 'wrong', confirmedBy: john.id }, context: {}
   });
   assert.equal(receipt.status, 'denied');
@@ -101,6 +102,7 @@ test('execute invokes an allowed capability with a matching confirmation', async
   const prepared = await cup.prepare({ subject: john, capability: 'mail.send', input, context: {} });
   const receipt: Receipt = await cup.execute({
     subject: john, capability: 'mail.send', input,
+    idempotencyKey: 'mail-test-2',
     confirmation: { inputHash: prepared.inputHash, confirmedBy: john.id }, context: {}
   });
   assert.equal(receipt.status, 'succeeded');
@@ -148,7 +150,7 @@ test('canonicalizes nested input keys for confirmation', async () => {
   const first = { message: { subject: 'Hi', body: 'Hello' } };
   const prepared = await cup.prepare({ subject: john, capability: 'mail.send', input: first, context: {} });
   const reordered = { message: { body: 'Hello', subject: 'Hi' } };
-  const result = await cup.execute({ ...prepared.request, input: reordered, confirmation: { inputHash: prepared.inputHash, confirmedBy: john.id } });
+  const result = await cup.execute({ ...prepared.request, input: reordered, idempotencyKey: 'mail-test-3', confirmation: { inputHash: prepared.inputHash, confirmedBy: john.id } });
   assert.equal(result.status, 'succeeded'); assert.equal(calls, 1);
 });
 
@@ -157,7 +159,7 @@ test('rejects an execution after its prepared policy version becomes stale', asy
   cup.policy.allow({ id: 'mail', principal: { id: john.id }, operation: 'execute', resource: { id: 'mail.send' }, priority: 10 });
   const prepared = await cup.prepare({ subject: john, capability: 'mail.send', input: { to: ['a@example.com'], body: 'Hi' }, context: {} });
   cup.policy.deny({ id: 'revoked', principal: { id: john.id }, operation: 'execute', resource: { id: 'mail.send' }, priority: 20 });
-  const result = await cup.execute({ ...prepared.request, confirmation: { inputHash: prepared.inputHash, confirmedBy: john.id } });
+  const result = await cup.execute({ ...prepared.request, idempotencyKey: 'mail-test-4', confirmation: { inputHash: prepared.inputHash, confirmedBy: john.id } });
   assert.equal(result.decision.reasonCode, 'PREPARED_DECISION_STALE');
 });
 
@@ -186,7 +188,7 @@ test('issues and enforces a subject-bound action token', async () => {
   const view = await cup.project({ subject: john, context: {} });
   const token = view.capabilities[0]?.actionToken;
   assert.ok(token);
-  const denied = await cup.execute({ subject: other, capability: 'mail.send', input: {}, actionToken: token, context: {} });
+  const denied = await cup.execute({ subject: other, capability: 'mail.send', input: {}, actionToken: token, idempotencyKey: 'token-test', context: {} });
   assert.equal(denied.status, 'denied');
   assert.equal(denied.decision.reasonCode, 'INVALID_ACTION_TOKEN');
 });
@@ -216,4 +218,13 @@ test('postgres persistence uses parameterized receipt writes', async () => {
   assert.match(calls[0]!.sql, /values \(\$1,\$2/);
   assert.equal(calls[0]!.values?.[0], 'r1');
   assert.match(CUP_POSTGRES_SCHEMA, /create table if not exists cup_prepared_actions/);
+});
+
+test('rejects required-idempotency actions without a key', async () => {
+  const cup = new CapabilityUI();
+  cup.register(sendMail(async () => ({ sent: true })));
+  cup.policy.allow({ id: 'john-mail', principal: { id: john.id }, operation: 'execute', resource: { id: 'mail.send' }, priority: 10 });
+  const receipt = await cup.execute({ subject: john, capability: 'mail.send', input: { to: ['a@example.com'], body: 'Hi' }, context: {} });
+  assert.equal(receipt.status, 'denied');
+  assert.equal(receipt.decision.reasonCode, 'IDEMPOTENCY_KEY_REQUIRED');
 });

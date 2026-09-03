@@ -1,7 +1,24 @@
 import type {
   Capability,
+  ExecutionContext,
   Resource,
+  Subject,
 } from './runtime.js';
+
+/** Minimal registry contract used by hosts that load definitions from SQL or config. */
+export interface ExternalAgentResource extends Resource {
+  type: 'agent';
+  endpoint: string;
+  inputSchema: Record<string, unknown>;
+  outputSchema: Record<string, unknown>;
+  supportedTasks: string[];
+}
+
+export interface AgentRuntimeAdapter {
+  invoke(agent: ExternalAgentResource, input: unknown, context: ExecutionContext): Promise<unknown>;
+}
+
+export interface AgentAction { kind: 'action'; capability: string; input: unknown; }
 
 /** Minimal registry contract used by hosts that load definitions from SQL or config. */
 export interface ResourceRegistry {
@@ -33,3 +50,5 @@ export class MemoryResourceRegistry implements ResourceRegistry {
     return [...this.resources.values()];
   }
 }
+
+export function memoryRegistry(): MemoryResourceRegistry { return new MemoryResourceRegistry(); }
