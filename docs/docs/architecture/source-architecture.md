@@ -90,3 +90,15 @@ for (const policy of await store.policies()) {
 ```
 
 The host should cache this snapshot by the durable policy revision and rebuild it when a revision changes. Prepared actions must retain the revision used for preparation and reject execution against a newer revision.
+
+## Docs site live examples
+
+The [Generative UI](../build/generative-ui.md) page mounts React demos from `docs/src/components/GenUiExamples.tsx`. They are a renderer of a canned `AuthorizedView`, not a browser-hosted CUP runtime.
+
+| Export | What it demonstrates |
+|---|---|
+| `PrincipalScreens` | Same screen for `user:admin` and `user:bob`: columns, `mail.send`, and a forged `tools/call` |
+| `VisibilityGallery` | hidden, listed, inspectable, readable, usable mapped to controls |
+| `RedactionCompare` | `phone` and `personalEmail` omitted from Bob's table |
+
+Keep those examples in MDX as direct component tags. Do not wrap Docusaurus `Tabs` in a custom component; static generation requires `<TabItem>` to be a direct child of `<Tabs>`.

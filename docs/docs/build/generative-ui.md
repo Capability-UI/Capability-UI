@@ -7,12 +7,17 @@ description: Turn an AuthorizedView into forms, tables, and action controls with
 
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
+import {PrincipalScreens, RedactionCompare, VisibilityGallery} from '@site/src/components/GenUiExamples';
 
 # Generative UI with CUP
 
 A generated interface is a presentation of an `AuthorizedView`. CUP decides what exists for this subject, this purpose, and this policy version. The renderer only maps that document onto controls.
 
 Do not hide a button and call that authorization. The same view can drive a web form, a mobile sheet, a voice prompt, or no UI at all. Execution still goes through `prepare` and `execute` (or MCP `tools/call`).
+
+The frames below are a real renderer for a fake `AuthorizedView`. Switch the principal. Admin gets readable contacts and `mail.send`. Bob gets a redacted table and no send control. Forging the tool still fails.
+
+<PrincipalScreens />
 
 ## The rendering contract
 
@@ -123,6 +128,8 @@ cup --host ./dist/setup.js --subject user:admin \
 | readable | Filtered rows. Apply `fields` as column redaction, not CSS hiding. |
 | usable | The action control plus the short-lived `actionToken`. |
 
+<VisibilityGallery />
+
 A read-only collaborator and an owner can share one renderer. The view differs, so the screen differs.
 
 <Tabs groupId="surface">
@@ -159,7 +166,7 @@ Bob's generated screen has a contacts table and no create-resource form. Admin's
 
 ## Schema-driven action forms
 
-A capability already carries JSON Schema, risk, confirmation, and side effects. The form should copy those fields, not invent a second contract.
+A capability already carries JSON Schema, risk, confirmation, and side effects. The form should copy those fields, not invent a second contract. Try that path in the Admin screen above: Preview, then Confirm and send. Edit after preview to see that confirmation is bound to the reviewed input.
 
 ```tsx
 import type { AuthorizedCapability } from '@capability-ui/core';
@@ -252,6 +259,8 @@ cup --host ./dist/setup.js --subject user:admin \
 ## Field-level UI
 
 Redaction belongs in the data, not in the stylesheet. If `fields` marks `phone` unread, the table must omit the column. Derived widgets (CSV export, copy-to-clipboard, charts) must use the same filtered records you received from `read()`.
+
+<RedactionCompare />
 
 <Tabs groupId="surface">
 <TabItem value="cup" label="CUP">

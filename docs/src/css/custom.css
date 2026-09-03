@@ -12,6 +12,9 @@
 }
 
 .markdown { max-width: 82ch; }
+.markdown .cupExample {
+  max-width: min(72rem, calc(100vw - 2.5rem));
+}
 .markdown h1 { letter-spacing: -0.035em; }
 .markdown h2 { margin-top: 2.6rem; }
 .markdown h3 { margin-top: 2rem; }
