@@ -1,6 +1,6 @@
 {
   "name": "@capability-ui/core",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Agent-neutral capability, policy, projection, and guarded execution core for generative interfaces.",
   "type": "module",
   "main": "dist/src/index.js",

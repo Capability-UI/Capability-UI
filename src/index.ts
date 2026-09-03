@@ -6,6 +6,7 @@ export type Risk = 'low' | 'medium' | 'high' | 'critical';
 export type Effect = 'allow' | 'deny';
 export type Visibility = 'hidden' | 'listed' | 'inspectable' | 'readable' | 'usable';
 export type JsonSchema = Record<string, unknown>;
+export type SideEffect = string;
 export type ResourceRef = { id: string; version?: string };
 export type Scope = Record<string, unknown>;
 export type RequestContext = Scope & { purpose?: string; channel?: string; now?: Date };
@@ -30,24 +31,26 @@ export interface Capability extends Resource {
 }
 export interface Policy {
   id: string; effect: Effect; principal: PrincipalSelector; operation: Operation | Operation[]; resource: ResourceRef;
-  scope?: Scope; conditions?: Condition[]; obligations?: Obligation[]; priority: number; expiresAt?: string;
+  scope?: Scope; conditions?: Condition[]; obligations?: Obligation[]; priority: number; expiresAt?: string; version?: string;
 }
 export type PolicyInput = Omit<Policy, 'effect'>;
 export interface AuthorizationRequest { requestId?: string; subject: Subject; operation: Operation; resource: ResourceRef; scope?: Scope; proposedInput?: unknown; purpose?: string; context: RequestContext; }
 export interface Decision { requestId: string; effect: Effect; reasonCode: string; matchedPolicies: string[]; obligations: Obligation[]; policyVersion: string; expiresAt?: string; }
-export interface AuthorizedCapability { id: string; operation: Operation; inputSchema: JsonSchema; outputSchema: JsonSchema; risk: Risk; sideEffects: string[]; confirmation: ConfirmationMode; obligations: Obligation[]; }
-export interface AuthorizedResource { ref: ResourceRef; visibility: Visibility; schema?: JsonSchema; data?: unknown; capabilities: AuthorizedCapability[]; }
+export interface FieldPermission { path: string; readable: boolean; writable?: boolean; }
+export interface AuthorizedCapability { id: string; operation: Operation; inputSchema: JsonSchema; outputSchema: JsonSchema; risk: Risk; sideEffects: string[]; confirmation: ConfirmationMode; obligations: Obligation[]; actionToken?: string; }
+export interface AuthorizedResource { ref: ResourceRef; visibility: Visibility; schema?: JsonSchema; data?: unknown; fields?: FieldPermission[]; capabilities: AuthorizedCapability[]; }
 export interface AuthorizedView { viewId: string; subjectId: string; goal?: string; generatedAt: string; policyVersion: string; resources: AuthorizedResource[]; capabilities: AuthorizedCapability[]; globalObligations: Obligation[]; }
 export interface Confirmation { inputHash: string; confirmedBy: string; }
 export interface ExecutionContext extends RequestContext { requestId: string; idempotencyKey?: string; }
-export interface ExecutionRequest extends Omit<AuthorizationRequest, 'operation' | 'resource'> { operation?: Operation; resource?: ResourceRef; capability: string; input: unknown; confirmation?: Confirmation; idempotencyKey?: string; delegation?: DelegationGrant; }
+export interface ExecutionRequest extends Omit<AuthorizationRequest, 'operation' | 'resource'> { operation?: Operation; resource?: ResourceRef; capability: string; input: unknown; actionToken?: string; confirmation?: Confirmation; idempotencyKey?: string; delegation?: DelegationGrant; }
 export interface Receipt { id: string; status: 'succeeded' | 'failed' | 'denied'; actor: { id: string; type: Subject['type'] }; capability: string; inputHash: string; decision: Decision; resultSummary?: unknown; createdAt: string; }
 export interface DelegationGrant { id: string; from: Subject; to: Subject; capability: string; operations: Operation[]; scope?: Scope; purpose?: string; expiresAt: string; }
 export interface ExecutionAdapter { capabilityId: string; invoke(input: unknown, context: ExecutionContext): Promise<unknown>; }
 export interface ResourceAdapter { resourceId: string; read(request: { subject: Subject; query?: Record<string, unknown>; fields?: string[]; scope?: Scope; context: RequestContext }): Promise<unknown[]>; }
-export interface ReceiptSink { append(receipt: Receipt): Promise<void>; all(): Receipt[]; }
+export interface ReceiptQuery { requestId?: string; actorId?: string; capability?: string; status?: Receipt['status']; }
+export interface ReceiptSink { append(receipt: Receipt): Promise<void>; all(): Receipt[]; find?(query: ReceiptQuery): Receipt[]; }
 
-export class MemoryReceiptSink implements ReceiptSink { private readonly entries: Receipt[] = []; async append(receipt: Receipt) { this.entries.push(receipt); } all() { return [...this.entries]; } }
+export class MemoryReceiptSink implements ReceiptSink { private readonly entries: Receipt[] = []; async append(receipt: Receipt) { this.entries.push(receipt); } all() { return [...this.entries]; } find(query: ReceiptQuery) { return this.entries.filter(r => (!query.requestId || r.decision.requestId === query.requestId) && (!query.actorId || r.actor.id === query.actorId) && (!query.capability || r.capability === query.capability) && (!query.status || r.status === query.status)); } }
 
 function canonicalize(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonicalize);
@@ -97,7 +100,7 @@ function validateSchema(value: unknown, schema: JsonSchema, path = '$'): string[
 }
 function obligationsOf(policies: Policy[]): Obligation[] { return policies.flatMap(policy => policy.obligations ?? []); }
 
-class PolicyStore {
+export class PolicyStore {
   private readonly rules: Policy[] = []; private revision = 0;
   allow(input: PolicyInput): void { this.rules.push({ ...input, effect: 'allow' }); this.revision++; }
   deny(input: PolicyInput): void { this.rules.push({ ...input, effect: 'deny' }); this.revision++; }
@@ -116,6 +119,7 @@ export class CapabilityUI {
   private readonly resources = new Map<string, Resource>(); private readonly capabilities = new Map<string, Capability>();
   private readonly delegations = new Map<string, DelegationGrant>(); private readonly prepared = new Map<string, Decision>();
   private readonly listeners = new Map<string, Set<(event: ResourceEvent) => void>>();
+  private readonly actionTokens = new Map<string, { capability: string; subjectId: string; policyVersion: string; expiresAt: number }>();
   constructor(receipts: ReceiptSink = new MemoryReceiptSink()) { this.receipts = receipts; }
   register(resource: Resource | Capability): void { this.resources.set(resource.id, resource); if (resource.type === 'capability' && 'handler' in resource) this.capabilities.set(resource.id, resource); }
   registerAdapter(adapter: ResourceAdapter | ExecutionAdapter): void {
@@ -146,7 +150,7 @@ export class CapabilityUI {
       const read = await this.authorize({ subject: request.subject, operation: 'read', resource, purpose: request.context.purpose, context: request.context }); if (read.effect === 'allow') { visibility = 'readable'; schema = resource.schema; }
       resources.push({ ref: { id: resource.id, version: resource.version }, visibility, schema, capabilities: [] });
     }
-    for (const capability of this.capabilities.values()) { const d = await this.authorize({ subject: request.subject, operation: 'execute', resource: capability, purpose: request.context.purpose, context: request.context }); if (d.effect === 'allow') capabilities.push({ id: capability.id, operation: capability.operation, inputSchema: capability.inputSchema, outputSchema: capability.outputSchema, risk: capability.risk, sideEffects: capability.sideEffects, confirmation: capability.confirmation, obligations: d.obligations }); }
+    for (const capability of this.capabilities.values()) { const d = await this.authorize({ subject: request.subject, operation: 'execute', resource: capability, purpose: request.context.purpose, context: request.context }); if (d.effect === 'allow') { const actionToken = randomUUID(); this.actionTokens.set(actionToken, { capability: capability.id, subjectId: request.subject.id, policyVersion: d.policyVersion, expiresAt: Date.now() + 5 * 60_000 }); capabilities.push({ id: capability.id, operation: capability.operation, inputSchema: capability.inputSchema, outputSchema: capability.outputSchema, risk: capability.risk, sideEffects: capability.sideEffects, confirmation: capability.confirmation, obligations: d.obligations, actionToken }); } }
     return { viewId: randomUUID(), subjectId: request.subject.id, goal: request.goal, generatedAt: new Date().toISOString(), policyVersion: this.policy.version(), resources, capabilities, globalObligations: [] };
   }
   async read(request: { subject: Subject; resource: string; query?: Record<string, unknown>; fields?: string[]; scope?: Scope; purpose?: string; context: RequestContext }): Promise<{ items: unknown[]; receiptId: string }> {
@@ -165,6 +169,7 @@ export class CapabilityUI {
   async execute(request: ExecutionRequest): Promise<Receipt> {
     const capability = this.capabilities.get(request.capability); const inputHash = hash(request.input);
     if (!capability) return this.record({ status: 'denied', actor: request.subject, capability: request.capability, inputHash, decision: await this.authorize({ ...request, operation: 'execute', resource: { id: request.capability } }) });
+    if (request.actionToken) { const token = this.actionTokens.get(request.actionToken); if (!token || token.capability !== capability.id || token.subjectId !== request.subject.id || token.policyVersion !== this.policy.version() || token.expiresAt <= Date.now()) return this.record({ status: 'denied', actor: request.subject, capability: capability.id, inputHash, decision: this.denial(request, 'INVALID_ACTION_TOKEN') }); }
     const delegated = !!request.delegation;
     if (delegated && !this.validDelegation(request.delegation!, request)) return this.record({ status: 'denied', actor: request.subject, capability: capability.id, inputHash, decision: this.denial(request, 'INVALID_DELEGATION') });
     if (request.requestId && this.prepared.has(request.requestId) && this.prepared.get(request.requestId)?.policyVersion !== this.policy.version()) return this.record({ status: 'denied', actor: request.subject, capability: capability.id, inputHash, decision: this.denial(request, 'PREPARED_DECISION_STALE') });
@@ -199,6 +204,14 @@ export class CapabilityUI {
 
 export interface ResourceEvent { resource: ResourceRef; type: string; data?: unknown; }
 export interface Subscription { on(event: 'event' | 'access_removed', callback: (event: ResourceEvent) => void): void; close(): void; }
+export interface IdentityAdapter { resolve(request: unknown): Promise<Subject> | Subject; }
+export interface PolicyAdapter { authorize(request: AuthorizationRequest): Promise<Decision> | Decision; policyVersion(): string; }
+export interface CapabilityAdapter { capabilityId: string; invoke(input: unknown, context: ExecutionContext): Promise<unknown>; }
+export interface RendererAdapter<T> { render(view: AuthorizedView, target: T): unknown; }
+export interface CapabilityUIOptions { registry?: Array<Resource | Capability>; receipts?: ReceiptSink; }
+export function createCapabilityUI(options: CapabilityUIOptions = {}): CapabilityUI { const cup = new CapabilityUI(options.receipts); for (const item of options.registry ?? []) cup.register(item); return cup; }
+export function verifyActionToken(view: AuthorizedView, token: string): AuthorizedCapability | undefined { return view.capabilities.find(capability => capability.actionToken === token); }
+export function canonicalInputHash(input: unknown): string { return hash(input); }
 export function subject(id: string, attributes: Record<string, unknown> = {}, authenticated = true): Subject { return { id, type: id.startsWith('agent:') ? 'agent' : 'user', authenticated, attributes }; }
 export function resource(id: string, version = '1.0'): ResourceRef { return { id, version }; }
 export function capability(id: string): ResourceRef { return { id }; }

@@ -175,3 +175,24 @@ test('serves authorized tools through MCP JSON-RPC', async () => {
   const response = await server.handle({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
   assert.equal((response.result as { tools: unknown[] }).tools.length, 1);
 });
+
+test('issues and enforces a subject-bound action token', async () => {
+  const cup = new CapabilityUI();
+  cup.register({ ...sendMail(async () => ({ sent: true })), confirmation: 'none' });
+  cup.policy.allow({ id: 'john-mail', principal: { id: john.id }, operation: 'execute', resource: { id: 'mail.send' }, priority: 10 });
+  const view = await cup.project({ subject: john, context: {} });
+  const token = view.capabilities[0]?.actionToken;
+  assert.ok(token);
+  const denied = await cup.execute({ subject: other, capability: 'mail.send', input: {}, actionToken: token, context: {} });
+  assert.equal(denied.status, 'denied');
+  assert.equal(denied.decision.reasonCode, 'INVALID_ACTION_TOKEN');
+});
+
+test('queries in-memory receipts by actor and capability', async () => {
+  const cup = new CapabilityUI();
+  cup.register({ ...notes(), read: async () => [{ title: 'Brief' }] });
+  cup.policy.allow({ id: 'john-read', principal: { id: john.id }, operation: 'read', resource: { id: 'notes.john' }, priority: 10 });
+  await cup.read({ subject: john, resource: 'notes.john', context: {} });
+  const receipts = cup.receipts.find?.({ actorId: john.id, capability: 'notes.john' });
+  assert.equal(receipts?.length, 1);
+});

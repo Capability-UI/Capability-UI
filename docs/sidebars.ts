@@ -25,6 +25,11 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'category',
+      label: 'Architecture and persistence',
+      items: ['architecture/data-model'],
+    },
+    {
+      type: 'category',
       label: 'Operations',
       items: ['operations/receipts', 'operations/subscriptions', 'operations/testing', 'operations/production-checklist'],
     },

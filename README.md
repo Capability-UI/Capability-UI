@@ -4,7 +4,13 @@ Agent-neutral authorization and execution primitives for capability-driven gener
 
 CUP does not create, host, schedule, or manage agents. It can register an existing agent runtime as a resource, assign that agent a principal identity, and govern which data and capabilities the agent may discover, read, invoke, or delegate.
 
-## What is included in v0.1
+## Implementation status
+
+Version `0.1.2` is a dependency-free, in-memory protocol runtime. It implements the CUP semantic core: resource and capability registration, deterministic policy evaluation, authorized views, field redaction, guarded execution, confirmation hashes, subject-bound action tokens, delegation, subscriptions, MCP JSON-RPC mapping, adapter contracts, and receipts.
+
+CUP does not currently persist resources or policies to SQL by itself. The host application owns database schemas, migrations, policy loading, transaction boundaries, durable receipt storage, authentication, and provider handlers. The Docusaurus site includes a PostgreSQL schema and repository design in [CUP data model](docs/docs/architecture/data-model.md).
+
+## Implemented features
 
 - Typed resource and capability contracts
 - Separate `discover`, `inspect`, `read`, `execute`, and `delegate` operations

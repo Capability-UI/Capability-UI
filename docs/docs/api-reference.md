@@ -43,6 +43,9 @@ import {
 - `capability(id)` creates a capability `ResourceRef`.
 - `defineCapability(config)` adds `type: 'capability'` to a capability definition.
 - `inMemoryReceipts()` creates a development/test `MemoryReceiptSink`.
+- `createCapabilityUI(options)` creates a runtime, optionally registering resources and injecting a receipt sink.
+- `canonicalInputHash(input)` exposes the same canonical SHA-256 input hash used for confirmation binding.
+- `verifyActionToken(view, token)` finds a token in an authorized view for client-side routing.
 - `conditions.purposeIs(value)` matches the request purpose.
 - `conditions.recipientCountAtMost(max)` checks an array named `recipients` in proposed input.
 - `conditions.inputFieldEquals(field, expected)` checks one top-level proposed input field.
@@ -56,6 +59,7 @@ import {
 - `Decision`: effect, reason code, matched policies, obligations, policy version, and request ID.
 - `AuthorizedView`: subject-specific resources, capabilities, and policy version.
 - `Receipt`: status, actor, capability, input hash, decision, result summary, and timestamp.
+- `ReceiptQuery`: optional request, actor, capability, and status filters for receipt lookup.
 - `DelegationGrant`: source, recipient, capability, allowed operations, scope, purpose, and expiration.
 
 ## MCP profile
@@ -63,6 +67,16 @@ import {
 - `createMCPServer({ cup, name, authenticate? })` returns an object with `handle(request)`.
 - Supported methods in the reference profile: `initialize`, `resources/list`, `resources/read`, `tools/list`, and `tools/call`.
 - The MCP profile is transport-neutral. Host it behind HTTP, WebSocket, stdio, or another framing layer.
+
+## Adapter contracts
+
+- `IdentityAdapter` resolves an authenticated transport request to a `Subject`.
+- `ResourceAdapter` loads current data for a registered resource.
+- `ExecutionAdapter` invokes a capability handler through a host service.
+- `PolicyAdapter` describes an external policy engine integration.
+- `RendererAdapter<T>` converts an `AuthorizedView` into a client-specific presentation.
+
+These interfaces describe integration boundaries. The current `CapabilityUI` instance remains the in-memory reference evaluator; SQL-backed policy and resource stores must be implemented by the host as described in [CUP data model](architecture/data-model).
 
 ## TypeScript imports
 
