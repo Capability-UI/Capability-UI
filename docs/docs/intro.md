@@ -36,6 +36,7 @@ sequenceDiagram
 
 - [The mental model](foundations/mental-model): resources, capabilities, subjects, policies, views, and receipts.
 - [Agent neutrality](foundations/agent-neutrality): how to govern an existing assistant without putting an agent framework in CUP.
+- [From zero to production](build/from-zero-to-production): one owner and one resource, then two growth paths (host library calls, or MCP conversations).
 - [Installation](build/installation): add the package and run a complete first example.
 - [Reading data](build/read-data): discovery, scopes, field selection, redaction, adapters, and read receipts.
 - [Executing actions](build/execute-action): schemas, previews, confirmation, re-authorization, idempotency, and failure receipts.

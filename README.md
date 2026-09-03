@@ -32,7 +32,7 @@ CUP does not currently persist resources or policies to SQL by itself. The host 
 
 ## Learn by example
 
-The [from zero to production](docs/docs/build/from-zero-to-production.md) walkthrough builds a real CUP system step by step: one user, one resource, full authority -- then an external agent extends it via MCP, new principals are created, policies narrow their access, and the audit trail grows with every operation.
+The [from zero to production](docs/docs/build/from-zero-to-production.md) walkthrough starts with one owner, one resource, and full authority. Path A grows that system with host library calls. Path B uses CUP code only in Stage 1, then shows the rest as user messages and MCP tool calls and responses.
 
 ## Install
 
