@@ -5,11 +5,17 @@ sidebar_label: Receipts
 description: Store and inspect evidence for reads, denials, failures, and successful actions.
 ---
 
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
 # Receipts and audit records
 
 A receipt records what CUP decided and what happened afterward. It is useful to the client that needs to explain a failure, the operator investigating an incident, and the person reviewing an external action.
 
 ## Use the in-memory sink in tests
+
+<Tabs groupId="surface">
+<TabItem value="cup" label="CUP">
 
 ```ts
 import { CapabilityUI, inMemoryReceipts } from '@capability-ui/core';
@@ -17,9 +23,35 @@ import { CapabilityUI, inMemoryReceipts } from '@capability-ui/core';
 const receipts = inMemoryReceipts();
 const cup = new CapabilityUI(receipts);
 
-// After a read or execute call:
 console.log(receipts.all());
 ```
+
+</TabItem>
+<TabItem value="mcp" label="MCP">
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "subjectId": "user:admin",
+    "name": "workspace.queryReceipts",
+    "arguments": {}
+  }
+}
+```
+
+</TabItem>
+<TabItem value="cli" label="CLI">
+
+```bash
+cup --host ./dist/setup.js --subject user:admin \
+  tools call workspace.queryReceipts --args '{}'
+```
+
+</TabItem>
+</Tabs>
 
 The default sink is also in memory. It is not durable and should not be used as the only audit store in production.
 

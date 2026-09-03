@@ -5,6 +5,9 @@ sidebar_label: Agent resources
 description: Register an assistant from another runtime and govern access to it.
 ---
 
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
 # Model external agents as resources
 
 CUP treats an external assistant as a resource with an identity and a contract. This gives the application a way to decide who may discover or invoke that assistant without importing its framework.
@@ -71,13 +74,49 @@ const runAccountAnalyst = defineCapability({
 
 cup.register(runAccountAnalyst);
 cup.policy.allow({ id: 'owner-run-agent', principal: { id: user.id }, operation: 'execute', resource: { id: runAccountAnalyst.id }, priority: 10 });
+```
 
+<Tabs groupId="surface">
+<TabItem value="cup" label="CUP">
+
+```ts
 const prepared = await cup.prepare({
   subject: user, capability: runAccountAnalyst.id,
   input: { task: 'renewal-summary', accountIds: ['acct-1'] },
   context: { purpose: 'renewal-review' }, purpose: 'renewal-review',
 });
 ```
+
+</TabItem>
+<TabItem value="mcp" label="MCP">
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "subjectId": "user:john",
+    "name": "agent.account-analyst.run",
+    "arguments": { "task": "renewal-summary", "accountIds": ["acct-1"] },
+    "context": { "purpose": "renewal-review" }
+  }
+}
+```
+
+</TabItem>
+<TabItem value="cli" label="CLI">
+
+```bash
+cup --host ./dist/setup.js --subject user:john \
+  --purpose renewal-review \
+  tools call agent.account-analyst.run \
+  --args '{"task":"renewal-summary","accountIds":["acct-1"]}' \
+  --confirm --idempotency-key analyst-run-1
+```
+
+</TabItem>
+</Tabs>
 
 `externalAgentRuntime` is intentionally host code. It can call any vendor or custom system. CUP handles the boundary around the call.
 

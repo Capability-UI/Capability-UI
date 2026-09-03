@@ -5,6 +5,9 @@ sidebar_label: Mental model
 description: Understand the objects and decisions that make up CUP.
 ---
 
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
 # The CUP mental model
 
 CUP separates five concerns that applications often mix together.
@@ -23,23 +26,58 @@ A resource can represent a database-backed collection, a single service, a workf
 
 A subject is a user, agent, service, or group. The `authenticated` flag must come from your authentication layer. The helper is convenient for examples, but production code should construct the subject from a verified session or token.
 
+<Tabs groupId="surface">
+<TabItem value="cup" label="CUP">
+
 ```ts
 import { subject, type Subject } from '@capability-ui/core';
 
-// In production, these values come from a verified identity token.
 const signedInUser: Subject = subject(
   'user:john',
   { role: 'owner', workspace: 'acme' },
   true,
 );
 
-// An external assistant gets its own identity. It is not the human user.
 const researchAssistant: Subject = subject(
   'agent:research-assistant',
   { role: 'researcher', workspace: 'acme' },
   true,
 );
 ```
+
+</TabItem>
+<TabItem value="mcp" label="MCP">
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/list",
+  "params": { "subjectId": "user:john" }
+}
+```
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "tools/list",
+  "params": { "subjectId": "agent:research-assistant" }
+}
+```
+
+The host maps the transport credential to `subjectId`. CUP never infers identity from the tool name.
+
+</TabItem>
+<TabItem value="cli" label="CLI">
+
+```bash
+cup --host ./dist/setup.js --subject user:john tools list
+cup --host ./dist/setup.js --subject agent:research-assistant tools list
+```
+
+</TabItem>
+</Tabs>
 
 CUP evaluates the assistant as the actor when it makes a downstream call. Passing the human identity through every assistant action would erase the boundary that policies need to control.
 

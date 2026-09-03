@@ -5,6 +5,9 @@ sidebar_label: Installation
 description: Install the TypeScript package and verify the toolchain.
 ---
 
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
 # Install CUP
 
 CUP is distributed as a TypeScript package with no runtime dependency on a UI library, database, MCP SDK, or agent framework.
@@ -30,12 +33,17 @@ For a project that compiles ESM TypeScript:
     "test": "node --test"
   },
   "dependencies": {
-    "@capability-ui/core": "^0.1.1"
+    "@capability-ui/core": "^0.2.0"
   }
 }
 ```
 
 ## First verification
+
+Host setup (CUP tab) registers policy. After that, discovery is the same request over MCP or the CLI.
+
+<Tabs groupId="surface">
+<TabItem value="cup" label="CUP">
 
 ```ts
 // first-cup.ts
@@ -62,6 +70,34 @@ const decision = await cup.authorize({
 console.log(decision.effect, decision.reasonCode);
 // allow ALLOWED
 ```
+
+</TabItem>
+<TabItem value="mcp" label="MCP">
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "resources/list",
+  "params": {
+    "subjectId": "user:john",
+    "context": { "purpose": "open-dashboard" }
+  }
+}
+```
+
+</TabItem>
+<TabItem value="cli" label="CLI">
+
+```bash
+cup --host ./dist/first-cup.js --subject user:john \
+  --purpose open-dashboard resources list
+```
+
+</TabItem>
+</Tabs>
+
+`resources/list` is CUP `discover`. A missing allow still returns an empty list rather than leaking the resource id.
 
 ## Host responsibilities
 

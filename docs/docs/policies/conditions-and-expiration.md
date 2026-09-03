@@ -5,6 +5,9 @@ sidebar_label: Conditions and expiry
 description: Add purpose checks, time limits, and runtime obligations to policies.
 ---
 
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
 # Conditions, expiration, and obligations
 
 Policies can express more than a role. They can limit why a request is made, when a rule stops applying, and what the client or executor must do after a match.
@@ -12,6 +15,9 @@ Policies can express more than a role. They can limit why a request is made, whe
 ## Purpose-bound access
 
 Use `purpose` on the authorization request and a condition on the policy:
+
+<Tabs groupId="surface">
+<TabItem value="cup" label="CUP">
 
 ```ts
 import { CapabilityUI, conditions, subject } from '@capability-ui/core';
@@ -29,6 +35,35 @@ const decision = await cup.authorize({
   purpose: 'case-review', context: { purpose: 'case-review' },
 });
 ```
+
+</TabItem>
+<TabItem value="mcp" label="MCP">
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "resources/read",
+  "params": {
+    "subjectId": "user:lee",
+    "uri": "cup://crm.customer",
+    "context": { "purpose": "case-review" }
+  }
+}
+```
+
+A different purpose is denied.
+
+</TabItem>
+<TabItem value="cli" label="CLI">
+
+```bash
+cup --host ./dist/setup.js --subject user:lee \
+  --purpose case-review resources read cup://crm.customer
+```
+
+</TabItem>
+</Tabs>
 
 A request for a different purpose receives `NO_MATCHING_ALLOW`.
 

@@ -66,3 +66,13 @@ Every example in this guide follows the same sequence:
 9. Store and inspect the receipt.
 
 The code examples are complete snippets. They repeat imports and definitions so you can copy one into a separate file without relying on an earlier page.
+
+## How examples are shown
+
+Runtime examples use three tabs that share one CUP decision:
+
+- **CUP** is host TypeScript against `CapabilityUI`.
+- **MCP** is the same request as JSON-RPC (`resources/list`, `resources/read`, `tools/list`, `tools/call`).
+- **CLI** is the same request as `cup` commands.
+
+MCP and CLI never skip the policy engine. They call `createMCPServer().handle()`. Host-only setup (handlers, adapters, SQL migrations) stays in the CUP tab. The MCP and CLI tabs show the client call after that setup exists.

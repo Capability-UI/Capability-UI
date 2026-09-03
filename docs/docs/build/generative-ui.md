@@ -5,6 +5,9 @@ sidebar_label: Generative UI
 description: Turn an AuthorizedView into forms, tables, and action controls without treating the screen as the security boundary.
 ---
 
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
 # Generative UI with CUP
 
 A generated interface is a presentation of an `AuthorizedView`. CUP decides what exists for this subject, this purpose, and this policy version. The renderer only maps that document onto controls.
@@ -51,16 +54,64 @@ const renderer: RendererAdapter<UiTree> = {
 };
 ```
 
-`project()` is the only input the renderer should need:
+`project()` is the only input the renderer should need. MCP `tools/list` plus `resources/list` is the same projection.
+
+<Tabs groupId="surface">
+<TabItem value="cup" label="CUP">
 
 ```ts
 const view = await cup.project({
-  subject: alice,
+  subject: admin,
   goal: 'review contacts and send a note',
   context: { purpose: 'account_review', channel: 'web' },
 });
 const screen = renderer.render(view, { kind: 'screen', title: '', sections: [] });
 ```
+
+</TabItem>
+<TabItem value="mcp" label="MCP">
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/list",
+  "params": {
+    "subjectId": "user:admin",
+    "goal": "review contacts and send a note",
+    "context": { "purpose": "account_review", "channel": "web" }
+  }
+}
+```
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "resources/list",
+  "params": {
+    "subjectId": "user:admin",
+    "context": { "purpose": "account_review", "channel": "web" }
+  }
+}
+```
+
+</TabItem>
+<TabItem value="cli" label="CLI">
+
+```bash
+cup --host ./dist/setup.js --subject user:admin \
+  --goal "review contacts and send a note" \
+  --purpose account_review --context '{"channel":"web"}' \
+  tools list
+
+cup --host ./dist/setup.js --subject user:admin \
+  --purpose account_review --context '{"channel":"web"}' \
+  resources list
+```
+
+</TabItem>
+</Tabs>
 
 ## Visibility to controls
 
@@ -74,18 +125,37 @@ const screen = renderer.render(view, { kind: 'screen', title: '', sections: [] }
 
 A read-only collaborator and an owner can share one renderer. The view differs, so the screen differs.
 
+<Tabs groupId="surface">
+<TabItem value="cup" label="CUP">
+
 ```ts
-const ownerView = await cup.project({ subject: alice, context: { channel: 'web' } });
+const ownerView = await cup.project({ subject: admin, context: { channel: 'web' } });
 const memberView = await cup.project({ subject: bob, context: { channel: 'web' } });
-
-ownerView.capabilities.map(c => c.id);
-// ['workspace.addResource', 'workspace.allowPolicy', ...]
-
-memberView.capabilities.map(c => c.id);
-// []
 ```
 
-Bob's generated screen has a contacts table and no create-resource form. Alice's screen has both.
+</TabItem>
+<TabItem value="mcp" label="MCP">
+
+```json
+{ "method": "tools/list", "params": { "subjectId": "user:admin" } }
+```
+
+```json
+{ "method": "tools/list", "params": { "subjectId": "user:bob" } }
+```
+
+</TabItem>
+<TabItem value="cli" label="CLI">
+
+```bash
+cup --host ./dist/setup.js --subject user:admin tools list
+cup --host ./dist/setup.js --subject user:bob tools list
+```
+
+</TabItem>
+</Tabs>
+
+Bob's generated screen has a contacts table and no create-resource form. Admin's screen has both.
 
 ## Schema-driven action forms
 
@@ -124,9 +194,12 @@ function ActionForm({ capability, onPropose }: {
 
 When the user submits, call `prepare`, show `prepared.preview`, then `execute` with the confirmation hash and the action token from the view. If the renderer posts a different payload than the preview, CUP denies it.
 
+<Tabs groupId="surface">
+<TabItem value="cup" label="CUP">
+
 ```ts
 const prepared = await cup.prepare({
-  subject: alice,
+  subject: admin,
   capability: 'mail.send',
   input,
   context: { channel: 'web', purpose: 'personal_message' },
@@ -137,15 +210,51 @@ showPreview(prepared.preview);
 const receipt = await cup.execute({
   ...prepared.request,
   actionToken: capability.actionToken,
-  confirmation: { inputHash: prepared.inputHash, confirmedBy: alice.id },
+  confirmation: { inputHash: prepared.inputHash, confirmedBy: admin.id },
   idempotencyKey: crypto.randomUUID(),
   context: { channel: 'web', purpose: 'personal_message' },
 });
 ```
 
+</TabItem>
+<TabItem value="mcp" label="MCP">
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "subjectId": "user:admin",
+    "name": "mail.send",
+    "arguments": { "to": ["person@example.com"], "body": "Hello" },
+    "confirmation": { "confirmedBy": "user:admin" },
+    "idempotencyKey": "mail-ui-1",
+    "context": { "channel": "web", "purpose": "personal_message" }
+  }
+}
+```
+
+</TabItem>
+<TabItem value="cli" label="CLI">
+
+```bash
+cup --host ./dist/setup.js --subject user:admin \
+  --purpose personal_message --context '{"channel":"web"}' \
+  tools call mail.send \
+  --args '{"to":["person@example.com"],"body":"Hello"}' \
+  --confirm --idempotency-key mail-ui-1
+```
+
+</TabItem>
+</Tabs>
+
 ## Field-level UI
 
 Redaction belongs in the data, not in the stylesheet. If `fields` marks `phone` unread, the table must omit the column. Derived widgets (CSV export, copy-to-clipboard, charts) must use the same filtered records you received from `read()`.
+
+<Tabs groupId="surface">
+<TabItem value="cup" label="CUP">
 
 ```ts
 const page = await cup.read({
@@ -154,21 +263,35 @@ const page = await cup.read({
   scope: { workspaceId: 'acme' },
   context: { channel: 'web' },
 });
+```
 
-function ContactTable({ items }: { items: Array<Record<string, unknown>> }) {
-  const columns = Object.keys(items[0] ?? {}).filter(name => name !== 'phone');
-  return (
-    <table>
-      <thead><tr>{columns.map(name => <th key={name}>{name}</th>)}</tr></thead>
-      <tbody>
-        {items.map((row, index) => (
-          <tr key={index}>{columns.map(name => <td key={name}>{String(row[name] ?? '')}</td>)}</tr>
-        ))}
-      </tbody>
-    </table>
-  );
+</TabItem>
+<TabItem value="mcp" label="MCP">
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "resources/read",
+  "params": {
+    "subjectId": "user:bob",
+    "uri": "cup://crm.contacts",
+    "context": { "workspaceId": "acme", "channel": "web" }
+  }
 }
 ```
+
+</TabItem>
+<TabItem value="cli" label="CLI">
+
+```bash
+cup --host ./dist/setup.js --subject user:bob \
+  --context '{"workspaceId":"acme","channel":"web"}' \
+  resources read cup://crm.contacts
+```
+
+</TabItem>
+</Tabs>
 
 ## One view, several surfaces
 
@@ -185,6 +308,9 @@ If a principal's access changes while a screen is open, the next `execute` uses 
 
 Assert the view, then assert that a forged control still fails:
 
+<Tabs groupId="surface">
+<TabItem value="cup" label="CUP">
+
 ```ts
 const view = await cup.project({ subject: bob, context: { channel: 'web' } });
 assert.equal(view.capabilities.some(c => c.id === 'mail.send'), false);
@@ -197,5 +323,35 @@ const forged = await cup.execute({
 });
 assert.equal(forged.status, 'denied');
 ```
+
+</TabItem>
+<TabItem value="mcp" label="MCP">
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "subjectId": "user:bob",
+    "name": "mail.send",
+    "arguments": { "to": ["everyone@example.com"], "body": "Hello" },
+    "context": { "channel": "web" }
+  }
+}
+```
+
+</TabItem>
+<TabItem value="cli" label="CLI">
+
+```bash
+cup --host ./dist/setup.js --subject user:bob tools list
+cup --host ./dist/setup.js --subject user:bob \
+  tools call mail.send \
+  --args '{"to":["everyone@example.com"],"body":"Hello"}'
+```
+
+</TabItem>
+</Tabs>
 
 The missing button is a product detail. The denied receipt is the security property.

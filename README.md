@@ -148,7 +148,7 @@ const result = await cup.execute({
 The `cup` binary is an MCP client. Point it at a host module that exports `{ cup }`:
 
 ```bash
-npx cup --host ./dist/setup.js --subject user:alice tools list
+npx cup --host ./dist/setup.js --subject user:admin tools list
 npx cup --host ./dist/setup.js --subject user:bob resources read cup://crm.contacts
 ```
 

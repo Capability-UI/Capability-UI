@@ -5,11 +5,17 @@ sidebar_label: Testing
 description: Build conformance tests around authorization, execution, delegation, and adapters.
 ---
 
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
 # Test CUP integrations
 
 A CUP test suite should test what a caller can learn, what it can propose, what it can execute, and what happens when policy changes. Success-only tests miss the security boundary.
 
 ## Test a denied request first
+
+<Tabs groupId="surface">
+<TabItem value="cup" label="CUP">
 
 ```ts
 import assert from 'node:assert/strict';
@@ -28,7 +34,40 @@ test('denies an unconfigured read', async () => {
 });
 ```
 
+</TabItem>
+<TabItem value="mcp" label="MCP">
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "resources/read",
+  "params": {
+    "subjectId": "user:test",
+    "uri": "cup://private.data",
+    "context": { "purpose": "test" }
+  }
+}
+```
+
+Expected JSON-RPC error: `CUP_NOT_AUTHORIZED:NO_MATCHING_ALLOW`.
+
+</TabItem>
+<TabItem value="cli" label="CLI">
+
+```bash
+cup --host ./dist/setup.js --subject user:test \
+  --purpose test resources read cup://private.data
+# exit 1
+```
+
+</TabItem>
+</Tabs>
+
 ## Test the handler boundary
+
+<Tabs groupId="surface">
+<TabItem value="cup" label="CUP">
 
 ```ts
 test('does not invoke a handler when confirmation is missing', async () => {
@@ -49,6 +88,37 @@ test('does not invoke a handler when confirmation is missing', async () => {
   assert.equal(calls, 0);
 });
 ```
+
+</TabItem>
+<TabItem value="mcp" label="MCP">
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "subjectId": "user:test",
+    "name": "dangerous.action",
+    "arguments": { "value": 1 },
+    "context": { "purpose": "test" }
+  }
+}
+```
+
+`isError: true`, `reasonCode: CONFIRMATION_REQUIRED`. The handler is not called.
+
+</TabItem>
+<TabItem value="cli" label="CLI">
+
+```bash
+cup --host ./dist/setup.js --subject user:test \
+  --purpose test tools call dangerous.action --args '{"value":1}'
+# exit 1, CONFIRMATION_REQUIRED
+```
+
+</TabItem>
+</Tabs>
 
 ## Required conformance cases
 

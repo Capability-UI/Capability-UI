@@ -4,6 +4,9 @@ title: Security model
 description: Understand CUP's enforcement boundaries and threat model.
 ---
 
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
 # Security model
 
 CUP assumes that a client, renderer, prompt, generated interface, or external assistant can make a wrong request. The library therefore treats the execution boundary as authoritative and treats every earlier projection as advisory input for composition.
@@ -26,6 +29,9 @@ A prepared decision can become stale after a policy changes. The reference imple
 
 A confirmation for one email must not authorize a changed email. CUP canonicalizes nested objects, sorts object keys recursively, preserves array order, and hashes the resulting JSON. The execution request must present the same hash and the confirming subject.
 
+<Tabs groupId="surface">
+<TabItem value="cup" label="CUP">
+
 ```ts
 import { CapabilityUI, defineCapability, subject } from '@capability-ui/core';
 
@@ -44,7 +50,6 @@ cup.policy.allow({ id: 'send', principal: { id: user.id }, operation: 'execute',
 const input = { to: ['customer@example.test'], body: 'Approved copy' };
 const prepared = await cup.prepare({ subject: user, capability: sendEmail.id, input, context: { purpose: 'customer-follow-up' } });
 
-// The UI shows prepared.preview. The user confirms this exact input.
 const receipt = await cup.execute({
   subject: user,
   capability: sendEmail.id,
@@ -53,8 +58,43 @@ const receipt = await cup.execute({
   confirmation: { inputHash: prepared.inputHash, confirmedBy: user.id },
   context: { purpose: 'customer-follow-up' },
 });
-console.log(receipt.status); // succeeded: object key order does not change the hash
+console.log(receipt.status);
 ```
+
+</TabItem>
+<TabItem value="mcp" label="MCP">
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "subjectId": "user:john",
+    "name": "mail.send",
+    "arguments": { "to": ["customer@example.test"], "body": "Approved copy" },
+    "confirmation": { "confirmedBy": "user:john" },
+    "idempotencyKey": "mail-1",
+    "context": { "purpose": "customer-follow-up" }
+  }
+}
+```
+
+Changing `to` or `body` after confirmation produces `CONFIRMATION_REQUIRED` or a mismatched hash denial.
+
+</TabItem>
+<TabItem value="cli" label="CLI">
+
+```bash
+cup --host ./dist/setup.js --subject user:john \
+  --purpose customer-follow-up \
+  tools call mail.send \
+  --args '{"to":["customer@example.test"],"body":"Approved copy"}' \
+  --confirm --idempotency-key mail-1
+```
+
+</TabItem>
+</Tabs>
 
 Changing the recipient or body causes a different hash and produces a denied receipt.
 

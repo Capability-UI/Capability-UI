@@ -5,6 +5,9 @@ sidebar_label: Runtime adapters
 description: Connect databases, services, and agent frameworks to CUP without duplicating policy.
 ---
 
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
 # Build runtime adapters
 
 Adapters translate CUP contracts into calls to systems that already exist. Keep the adapter thin. It should pass verified identity, scope, purpose, and request IDs to the host service, then return a typed result.
@@ -36,6 +39,48 @@ const accounts: ResourceAdapter = {
 };
 cup.registerAdapter(accounts);
 ```
+
+After the adapter is registered, clients read through CUP, MCP, or the CLI:
+
+<Tabs groupId="surface">
+<TabItem value="cup" label="CUP">
+
+```ts
+await cup.read({
+  subject: user,
+  resource: 'crm.accounts',
+  scope: { workspace: 'acme' },
+  context: { workspace: 'acme', purpose: 'renewal-review' },
+});
+```
+
+</TabItem>
+<TabItem value="mcp" label="MCP">
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "resources/read",
+  "params": {
+    "subjectId": "user:maya",
+    "uri": "cup://crm.accounts",
+    "context": { "workspace": "acme", "purpose": "renewal-review" }
+  }
+}
+```
+
+</TabItem>
+<TabItem value="cli" label="CLI">
+
+```bash
+cup --host ./dist/setup.js --subject user:maya \
+  --purpose renewal-review --context '{"workspace":"acme"}' \
+  resources read cup://crm.accounts
+```
+
+</TabItem>
+</Tabs>
 
 ## Execution adapter
 

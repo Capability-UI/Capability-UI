@@ -4,6 +4,9 @@ title: Agent neutrality
 description: Register and govern agents from any external framework without putting an agent framework in CUP.
 ---
 
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
 # Agent neutrality
 
 CUP describes how an existing assistant may be found, called, and granted access to other resources. It does not define how that assistant plans, remembers, retries, selects a model, schedules work, or manages a conversation.
@@ -104,6 +107,54 @@ cup.policy.allow({
   priority: 10,
 });
 ```
+
+<Tabs groupId="surface">
+<TabItem value="cup" label="CUP">
+
+```ts
+await cup.execute({
+  subject: owner,
+  capability: 'assistant.contract-review.run',
+  input: { contractId: 'c-1', question: 'renewal risk' },
+  purpose: 'contract-review',
+  confirmation: { inputHash, confirmedBy: owner.id },
+  idempotencyKey: 'review-1',
+  context: { purpose: 'contract-review' },
+});
+```
+
+</TabItem>
+<TabItem value="mcp" label="MCP">
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "subjectId": "user:john",
+    "name": "assistant.contract-review.run",
+    "arguments": { "contractId": "c-1", "question": "renewal risk" },
+    "confirmation": { "confirmedBy": "user:john" },
+    "idempotencyKey": "review-1",
+    "context": { "purpose": "contract-review" }
+  }
+}
+```
+
+</TabItem>
+<TabItem value="cli" label="CLI">
+
+```bash
+cup --host ./dist/setup.js --subject user:john \
+  --purpose contract-review \
+  tools call assistant.contract-review.run \
+  --args '{"contractId":"c-1","question":"renewal risk"}' \
+  --confirm --idempotency-key review-1
+```
+
+</TabItem>
+</Tabs>
 
 CUP still does not run the assistant. It checks whether the caller may start this task and records the call. The external runtime remains responsible for planning and task lifecycle.
 

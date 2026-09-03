@@ -5,6 +5,9 @@ sidebar_label: From zero to production
 description: Build a CUP-governed system from one owner and one resource, then grow it through MCP, hardcoded host contracts, or the CLI.
 ---
 
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
 # From zero to production
 
 A CUP system starts closed. The first useful state is one verified owner, one resource, and every operation allowed for that owner. From there the system grows because principals take actions, not because an engineer keeps editing policy files.
@@ -23,7 +26,7 @@ Path A is the production shape most teams should study first. After Stage 1, peo
 
 ## Stage 1: One user, one resource, full authority
 
-The host writes this once. It creates Alice, registers the workspace registry, gives Alice every operation on it, and exposes the meta-capabilities an owner needs so later growth can happen through MCP.
+The host writes this once. It creates the initial owner `admin`, registers the workspace registry, gives `admin` every operation on it, and exposes the meta-capabilities an owner needs so later growth can happen through MCP.
 
 ```ts
 // setup.ts
@@ -38,7 +41,7 @@ import {
 
 const cup = denyByDefault();
 
-const alice = subject('user:alice', {
+const admin = subject('user:admin', {
   role: 'owner',
   workspaceId: 'acme',
 });
@@ -48,7 +51,7 @@ const workspace: Resource = {
   type: 'data',
   version: '1.0',
   sensitivity: 'confidential',
-  owner: alice.id,
+  owner: admin.id,
   schema: {
     type: 'object',
     properties: {
@@ -58,7 +61,7 @@ const workspace: Resource = {
     },
   },
   read: async () => [
-    { id: 'workspace.registry', name: 'Acme Workspace', owner: alice.id },
+    { id: 'workspace.registry', name: 'Acme Workspace', owner: admin.id },
   ],
 };
 cup.register(workspace);
@@ -68,8 +71,8 @@ for (const operation of [
   'delete', 'execute', 'share', 'delegate',
 ] as const) {
   cup.policy.allow({
-    id: `alice-${operation}-registry`,
-    principal: { id: alice.id },
+    id: `admin-${operation}-registry`,
+    principal: { id: admin.id },
     operation,
     resource: { id: workspace.id },
     priority: 100,
@@ -82,15 +85,15 @@ function registerOwnerCapability(
   const capability = defineCapability(config);
   cup.register(capability);
   cup.policy.allow({
-    id: `alice-execute-${capability.id}`,
-    principal: { id: alice.id },
+    id: `admin-execute-${capability.id}`,
+    principal: { id: admin.id },
     operation: 'execute',
     resource: { id: capability.id },
     priority: 100,
   });
   cup.policy.allow({
-    id: `alice-delegate-${capability.id}`,
-    principal: { id: alice.id },
+    id: `admin-delegate-${capability.id}`,
+    principal: { id: admin.id },
     operation: 'delegate',
     resource: { id: capability.id },
     priority: 100,
@@ -278,7 +281,7 @@ const server = createMCPServer({
   name: 'acme-workspace',
   cup,
   authenticate: (request) => {
-    const subjectId = String(request.params?.subjectId ?? alice.id);
+    const subjectId = String(request.params?.subjectId ?? admin.id);
     const type = subjectId.startsWith('agent:') ? 'agent' : 'user';
     return { id: subjectId, type, authenticated: true, attributes: { workspaceId: 'acme' } };
   },
@@ -286,10 +289,10 @@ const server = createMCPServer({
 
 const cli = createCupCli({ cup, name: 'acme-workspace' });
 
-export { cup, alice, server, cli };
+export { cup, admin, server, cli };
 ```
 
-Alice can discover, read, and change the registry. The MCP server and CLI are live. No other principal exists yet. From here, choose a path.
+Admin can discover, read, and change the registry. The MCP server and CLI are live. No other principal exists yet. From here, choose a path.
 
 ---
 
@@ -303,11 +306,11 @@ Transcripts below use three voices:
 - **Agent tool call** is the MCP JSON-RPC request.
 - **Tool response** is what the CUP MCP server returns.
 
-### Stage 2: Alice's agent extends the workspace
+### Stage 2: Admin's agent extends the workspace
 
-Alice's assistant connects as `user:alice`. It can see every owner tool because Stage 1 granted Alice execute on those capabilities.
+Admin's assistant connects as `user:admin`. It can see every owner tool because Stage 1 granted Admin execute on those capabilities.
 
-**User (Alice):** Stand up the first CRM object and invite Bob as a member. I will approve the changes.
+**User (Admin):** Stand up the first CRM object and invite Bob as a member. I will approve the changes.
 
 **Agent tool call** `initialize`
 
@@ -316,7 +319,7 @@ Alice's assistant connects as `user:alice`. It can see every owner tool because 
   "jsonrpc": "2.0",
   "id": 1,
   "method": "initialize",
-  "params": { "subjectId": "user:alice" }
+  "params": { "subjectId": "user:admin" }
 }
 ```
 
@@ -342,7 +345,7 @@ Alice's assistant connects as `user:alice`. It can see every owner tool because 
   "id": 2,
   "method": "tools/list",
   "params": {
-    "subjectId": "user:alice",
+    "subjectId": "user:admin",
     "goal": "create the first CRM resource and a member principal",
     "context": { "purpose": "initial-workspace-setup" }
   }
@@ -369,7 +372,7 @@ Alice's assistant connects as `user:alice`. It can see every owner tool because 
 }
 ```
 
-The first mutating call is denied until Alice confirms the exact input. CUP does not treat the MCP request itself as consent.
+The first mutating call is denied until Admin confirms the exact input. CUP does not treat the MCP request itself as consent.
 
 **Agent tool call** `tools/call` `workspace.addResource`
 
@@ -379,7 +382,7 @@ The first mutating call is denied until Alice confirms the exact input. CUP does
   "id": 3,
   "method": "tools/call",
   "params": {
-    "subjectId": "user:alice",
+    "subjectId": "user:admin",
     "name": "workspace.addResource",
     "arguments": {
       "resourceId": "crm.contacts",
@@ -409,7 +412,7 @@ The first mutating call is denied until Alice confirms the exact input. CUP does
 
 **Agent:** Creating `crm.contacts` will register a new CUP resource. Approve that exact change?
 
-**User (Alice):** Approved.
+**User (Admin):** Approved.
 
 **Agent tool call** `tools/call` `workspace.addResource` (confirmed)
 
@@ -419,7 +422,7 @@ The first mutating call is denied until Alice confirms the exact input. CUP does
   "id": 4,
   "method": "tools/call",
   "params": {
-    "subjectId": "user:alice",
+    "subjectId": "user:admin",
     "name": "workspace.addResource",
     "arguments": {
       "resourceId": "crm.contacts",
@@ -428,7 +431,7 @@ The first mutating call is denied until Alice confirms the exact input. CUP does
     },
     "context": {
       "purpose": "initial-workspace-setup",
-      "confirmation": { "confirmedBy": "user:alice" },
+      "confirmation": { "confirmedBy": "user:admin" },
       "idempotencyKey": "add-crm-contacts-v1"
     }
   }
@@ -451,7 +454,7 @@ The first mutating call is denied until Alice confirms the exact input. CUP does
 }
 ```
 
-**Agent tool call** `tools/call` `workspace.addPrincipal` (after Alice approves)
+**Agent tool call** `tools/call` `workspace.addPrincipal` (after Admin approves)
 
 ```json
 {
@@ -459,12 +462,12 @@ The first mutating call is denied until Alice confirms the exact input. CUP does
   "id": 5,
   "method": "tools/call",
   "params": {
-    "subjectId": "user:alice",
+    "subjectId": "user:admin",
     "name": "workspace.addPrincipal",
     "arguments": { "principalId": "user:bob", "role": "member" },
     "context": {
       "purpose": "initial-workspace-setup",
-      "confirmation": { "confirmedBy": "user:alice" },
+      "confirmation": { "confirmedBy": "user:admin" },
       "idempotencyKey": "add-user-bob-v1"
     }
   }
@@ -489,9 +492,9 @@ The first mutating call is denied until Alice confirms the exact input. CUP does
 
 **Agent:** Contacts exist. Bob exists as a member. He still has no policies, so he cannot see anything yet.
 
-### Stage 3: Alice grants Bob a narrow view
+### Stage 3: Admin grants Bob a narrow view
 
-**User (Alice):** Let Bob discover and read contacts in the Acme workspace. Hide phone and personal email. Do not let him add resources.
+**User (Admin):** Let Bob discover and read contacts in the Acme workspace. Hide phone and personal email. Do not let him add resources.
 
 **Agent tool call** `tools/call` `workspace.allowPolicy`
 
@@ -501,7 +504,7 @@ The first mutating call is denied until Alice confirms the exact input. CUP does
   "id": 6,
   "method": "tools/call",
   "params": {
-    "subjectId": "user:alice",
+    "subjectId": "user:admin",
     "name": "workspace.allowPolicy",
     "arguments": {
       "id": "bob-discover-contacts",
@@ -511,7 +514,7 @@ The first mutating call is denied until Alice confirms the exact input. CUP does
       "priority": 50
     },
     "context": {
-      "confirmation": { "confirmedBy": "user:alice" },
+      "confirmation": { "confirmedBy": "user:admin" },
       "idempotencyKey": "policy-bob-discover-v1"
     }
   }
@@ -542,7 +545,7 @@ The first mutating call is denied until Alice confirms the exact input. CUP does
   "id": 7,
   "method": "tools/call",
   "params": {
-    "subjectId": "user:alice",
+    "subjectId": "user:admin",
     "name": "workspace.allowPolicy",
     "arguments": {
       "id": "bob-read-contacts",
@@ -554,7 +557,7 @@ The first mutating call is denied until Alice confirms the exact input. CUP does
       "redactFields": ["phone", "personalEmail"]
     },
     "context": {
-      "confirmation": { "confirmedBy": "user:alice" },
+      "confirmation": { "confirmedBy": "user:admin" },
       "idempotencyKey": "policy-bob-read-v1"
     }
   }
@@ -714,9 +717,9 @@ Bob does not see `workspace.registry`. Discovery never leaked it.
 
 **Agent:** Denied. I can read contacts. I cannot add resources.
 
-### Stage 5: Alice adds Carol with a time box
+### Stage 5: Admin adds Carol with a time box
 
-**User (Alice):** Add Carol as readonly for 30 days. She may read contacts in Acme, but hide phone, personal email, and internal notes.
+**User (Admin):** Add Carol as readonly for 30 days. She may read contacts in Acme, but hide phone, personal email, and internal notes.
 
 **Agent tool call** `tools/call` `workspace.addPrincipal`
 
@@ -726,11 +729,11 @@ Bob does not see `workspace.registry`. Discovery never leaked it.
   "id": 12,
   "method": "tools/call",
   "params": {
-    "subjectId": "user:alice",
+    "subjectId": "user:admin",
     "name": "workspace.addPrincipal",
     "arguments": { "principalId": "user:carol", "role": "readonly" },
     "context": {
-      "confirmation": { "confirmedBy": "user:alice" },
+      "confirmation": { "confirmedBy": "user:admin" },
       "idempotencyKey": "add-user-carol-v1"
     }
   }
@@ -761,7 +764,7 @@ Bob does not see `workspace.registry`. Discovery never leaked it.
   "id": 13,
   "method": "tools/call",
   "params": {
-    "subjectId": "user:alice",
+    "subjectId": "user:admin",
     "name": "workspace.allowPolicy",
     "arguments": {
       "id": "carol-read-contacts-limited",
@@ -774,7 +777,7 @@ Bob does not see `workspace.registry`. Discovery never leaked it.
       "redactFields": ["phone", "personalEmail", "internalNotes"]
     },
     "context": {
-      "confirmation": { "confirmedBy": "user:alice" },
+      "confirmation": { "confirmedBy": "user:admin" },
       "idempotencyKey": "policy-carol-read-v1"
     }
   }
@@ -799,9 +802,9 @@ Bob does not see `workspace.registry`. Discovery never leaked it.
 
 **Agent:** Carol can read contacts until that expiry. After it, CUP denies the same read without another code change.
 
-### Stage 6: Alice delegates a short setup job, then revokes it
+### Stage 6: Admin delegates a short setup job, then revokes it
 
-**User (Alice):** Let the setup bot add a projects board, then take the grant away.
+**User (Admin):** Let the setup bot add a projects board, then take the grant away.
 
 **Agent tool call** `tools/call` `workspace.delegate`
 
@@ -811,7 +814,7 @@ Bob does not see `workspace.registry`. Discovery never leaked it.
   "id": 14,
   "method": "tools/call",
   "params": {
-    "subjectId": "user:alice",
+    "subjectId": "user:admin",
     "name": "workspace.delegate",
     "arguments": {
       "to": "agent:setup-bot",
@@ -820,7 +823,7 @@ Bob does not see `workspace.registry`. Discovery never leaked it.
       "purpose": "add-projects-resource",
       "expiresInMs": 300000
     },
-    "context": { "confirmation": { "confirmedBy": "user:alice" } }
+    "context": { "confirmation": { "confirmedBy": "user:admin" } }
   }
 }
 ```
@@ -841,7 +844,7 @@ Bob does not see `workspace.registry`. Discovery never leaked it.
 }
 ```
 
-The setup bot now connects as `agent:setup-bot`, not as Alice.
+The setup bot now connects as `agent:setup-bot`, not as Admin.
 
 **User (setup operator):** Add the projects board.
 
@@ -885,7 +888,7 @@ The setup bot now connects as `agent:setup-bot`, not as Alice.
 }
 ```
 
-**User (Alice):** Revoke that grant.
+**User (Admin):** Revoke that grant.
 
 **Agent tool call** `tools/call` `workspace.revokeGrant`
 
@@ -895,7 +898,7 @@ The setup bot now connects as `agent:setup-bot`, not as Alice.
   "id": 16,
   "method": "tools/call",
   "params": {
-    "subjectId": "user:alice",
+    "subjectId": "user:admin",
     "name": "workspace.revokeGrant",
     "arguments": { "grantId": "grant-setup-1" }
   }
@@ -920,9 +923,9 @@ The setup bot now connects as `agent:setup-bot`, not as Alice.
 
 A second add-resource call from `agent:setup-bot` now returns `INVALID_DELEGATION` or `NO_MATCHING_ALLOW`.
 
-### Stage 7: Alice reads the audit trail
+### Stage 7: Admin reads the audit trail
 
-**User (Alice):** Show receipts for adding resources.
+**User (Admin):** Show receipts for adding resources.
 
 **Agent tool call** `tools/call` `workspace.queryReceipts`
 
@@ -932,7 +935,7 @@ A second add-resource call from `agent:setup-bot` now returns `INVALID_DELEGATIO
   "id": 17,
   "method": "tools/call",
   "params": {
-    "subjectId": "user:alice",
+    "subjectId": "user:admin",
     "name": "workspace.queryReceipts",
     "arguments": { "capability": "workspace.addResource" }
   }
@@ -949,17 +952,17 @@ A second add-resource call from `agent:setup-bot` now returns `INVALID_DELEGATIO
     "isError": false,
     "content": [{
       "type": "text",
-      "text": "{\"status\":\"succeeded\",\"resultSummary\":{\"receipts\":[{\"actor\":\"user:alice\",\"capability\":\"workspace.addResource\",\"status\":\"succeeded\",\"resourceId\":\"crm.contacts\"},{\"actor\":\"agent:setup-bot\",\"capability\":\"workspace.addResource\",\"status\":\"succeeded\",\"resourceId\":\"projects.board\"}]}}"
+      "text": "{\"status\":\"succeeded\",\"resultSummary\":{\"receipts\":[{\"actor\":\"user:admin\",\"capability\":\"workspace.addResource\",\"status\":\"succeeded\",\"resourceId\":\"crm.contacts\"},{\"actor\":\"agent:setup-bot\",\"capability\":\"workspace.addResource\",\"status\":\"succeeded\",\"resourceId\":\"projects.board\"}]}}"
     }]
   }
 }
 ```
 
-**Agent:** Two successful creates. Alice added contacts. The setup bot added the projects board under a grant that is now revoked.
+**Agent:** Two successful creates. Admin added contacts. The setup bot added the projects board under a grant that is now revoked.
 
-### Stage 8: Alice revokes Carol, then Carol is denied
+### Stage 8: Admin revokes Carol, then Carol is denied
 
-**User (Alice):** Carol's contract ended. Block her contact reads now.
+**User (Admin):** Carol's contract ended. Block her contact reads now.
 
 **Agent tool call** `tools/call` `workspace.denyPolicy`
 
@@ -969,7 +972,7 @@ A second add-resource call from `agent:setup-bot` now returns `INVALID_DELEGATIO
   "id": 18,
   "method": "tools/call",
   "params": {
-    "subjectId": "user:alice",
+    "subjectId": "user:admin",
     "name": "workspace.denyPolicy",
     "arguments": {
       "id": "carol-revoked",
@@ -979,7 +982,7 @@ A second add-resource call from `agent:setup-bot` now returns `INVALID_DELEGATIO
       "priority": 200
     },
     "context": {
-      "confirmation": { "confirmedBy": "user:alice" },
+      "confirmation": { "confirmedBy": "user:admin" },
       "idempotencyKey": "deny-carol-read-v1"
     }
   }
@@ -1059,11 +1062,14 @@ Use this path when you are embedding CUP inside application code and want the sa
 
 If you did not use the Stage 1 bootstrap above, you can register the same capabilities and call `createMCPServer` from host code. The [MCP server](../runtimes/mcp-server.md) page shows `handle()` for `initialize`, `resources/list`, `resources/read`, `tools/list`, and `tools/call`.
 
-Delegation from Alice to a setup agent is a host call:
+Delegation from Admin to a setup agent is a host call:
+
+<Tabs groupId="surface">
+<TabItem value="cup" label="CUP">
 
 ```ts
 const grant = await cup.delegate({
-  from: alice,
+  from: admin,
   to: subject('agent:setup-bot'),
   capability: 'workspace.addResource',
   operations: ['execute'],
@@ -1072,7 +1078,46 @@ const grant = await cup.delegate({
 });
 ```
 
-### Stage 3: Alice writes Bob's policies in process
+</TabItem>
+<TabItem value="mcp" label="MCP">
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "subjectId": "user:admin",
+    "name": "workspace.delegate",
+    "arguments": {
+      "to": "agent:setup-bot",
+      "capability": "workspace.addResource",
+      "operations": ["execute"],
+      "purpose": "initial-workspace-setup",
+      "expiresInMs": 3600000
+    },
+    "confirmation": { "confirmedBy": "user:admin" }
+  }
+}
+```
+
+</TabItem>
+<TabItem value="cli" label="CLI">
+
+```bash
+cup --host ./dist/setup.js --subject user:admin \
+  tools call workspace.delegate \
+  --args '{"to":"agent:setup-bot","capability":"workspace.addResource","operations":["execute"],"purpose":"initial-workspace-setup","expiresInMs":3600000}' \
+  --confirm
+```
+
+</TabItem>
+</Tabs>
+
+### Stage 3: Admin writes Bob's policies in process
+
+<Tabs groupId="surface">
+<TabItem value="cup" label="CUP">
 
 ```ts
 cup.policy.allow({
@@ -1093,7 +1138,48 @@ cup.policy.allow({
 });
 ```
 
+</TabItem>
+<TabItem value="mcp" label="MCP">
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "subjectId": "user:admin",
+    "name": "workspace.allowPolicy",
+    "arguments": {
+      "id": "bob-read-contacts",
+      "principalId": "user:bob",
+      "operation": "read",
+      "resourceId": "crm.contacts",
+      "priority": 50,
+      "scope": { "workspaceId": "acme" },
+      "redactFields": ["phone", "personalEmail"]
+    },
+    "confirmation": { "confirmedBy": "user:admin" }
+  }
+}
+```
+
+</TabItem>
+<TabItem value="cli" label="CLI">
+
+```bash
+cup --host ./dist/setup.js --subject user:admin \
+  tools call workspace.allowPolicy \
+  --args '{"id":"bob-read-contacts","principalId":"user:bob","operation":"read","resourceId":"crm.contacts","priority":50,"scope":{"workspaceId":"acme"},"redactFields":["phone","personalEmail"]}' \
+  --confirm
+```
+
+</TabItem>
+</Tabs>
+
 ### Stage 4: Bob is denied until those policies exist
+
+<Tabs groupId="surface">
+<TabItem value="cup" label="CUP">
 
 ```ts
 const bob = subject('user:bob', { role: 'member', workspaceId: 'acme' });
@@ -1103,10 +1189,36 @@ const before = await cup.authorize({
   resource: { id: 'workspace.registry' },
   context: {},
 });
-// deny NO_MATCHING_ALLOW
 ```
 
+</TabItem>
+<TabItem value="mcp" label="MCP">
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "resources/list",
+  "params": { "subjectId": "user:bob" }
+}
+```
+
+Bob's list does not include `workspace.registry`.
+
+</TabItem>
+<TabItem value="cli" label="CLI">
+
+```bash
+cup --host ./dist/setup.js --subject user:bob resources list
+```
+
+</TabItem>
+</Tabs>
+
 ### Stage 5: Time-limited contractor access
+
+<Tabs groupId="surface">
+<TabItem value="cup" label="CUP">
 
 ```ts
 cup.policy.allow({
@@ -1122,30 +1234,141 @@ cup.policy.allow({
 });
 ```
 
+</TabItem>
+<TabItem value="mcp" label="MCP">
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "subjectId": "user:admin",
+    "name": "workspace.allowPolicy",
+    "arguments": {
+      "id": "carol-read-contacts-limited",
+      "principalId": "user:carol",
+      "operation": "read",
+      "resourceId": "crm.contacts",
+      "priority": 30,
+      "scope": { "workspaceId": "acme" },
+      "expiresAt": "2026-10-03T16:00:00Z",
+      "redactFields": ["phone", "personalEmail", "internalNotes"]
+    },
+    "confirmation": { "confirmedBy": "user:admin" }
+  }
+}
+```
+
+</TabItem>
+<TabItem value="cli" label="CLI">
+
+```bash
+cup --host ./dist/setup.js --subject user:admin \
+  tools call workspace.allowPolicy \
+  --args '{"id":"carol-read-contacts-limited","principalId":"user:carol","operation":"read","resourceId":"crm.contacts","priority":30,"scope":{"workspaceId":"acme"},"expiresAt":"2026-10-03T16:00:00Z","redactFields":["phone","personalEmail","internalNotes"]}' \
+  --confirm
+```
+
+</TabItem>
+</Tabs>
+
 ### Stage 6: Prepare, confirm, execute
+
+<Tabs groupId="surface">
+<TabItem value="cup" label="CUP">
 
 ```ts
 const prepared = await cup.prepare({
-  subject: alice,
+  subject: admin,
   capability: 'workspace.addResource',
   input: { resourceId: 'projects.board', name: 'Projects Board', sensitivity: 'internal' },
   context: {},
 });
 const receipt = await cup.execute({
   ...prepared.request,
-  confirmation: { inputHash: prepared.inputHash, confirmedBy: alice.id },
+  confirmation: { inputHash: prepared.inputHash, confirmedBy: admin.id },
   idempotencyKey: 'add-projects-board-v1',
   context: {},
 });
 ```
 
+</TabItem>
+<TabItem value="mcp" label="MCP">
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "subjectId": "user:admin",
+    "name": "workspace.addResource",
+    "arguments": {
+      "resourceId": "projects.board",
+      "name": "Projects Board",
+      "sensitivity": "internal"
+    },
+    "confirmation": { "confirmedBy": "user:admin" },
+    "idempotencyKey": "add-projects-board-v1"
+  }
+}
+```
+
+</TabItem>
+<TabItem value="cli" label="CLI">
+
+```bash
+cup --host ./dist/setup.js --subject user:admin \
+  tools call workspace.addResource \
+  --args '{"resourceId":"projects.board","name":"Projects Board","sensitivity":"internal"}' \
+  --confirm --idempotency-key add-projects-board-v1
+```
+
+</TabItem>
+</Tabs>
+
 ### Stage 7: Query receipts
+
+<Tabs groupId="surface">
+<TabItem value="cup" label="CUP">
 
 ```ts
 const receipts = cup.receipts.find?.({ capability: 'workspace.addResource' }) ?? [];
 ```
 
+</TabItem>
+<TabItem value="mcp" label="MCP">
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "subjectId": "user:admin",
+    "name": "workspace.queryReceipts",
+    "arguments": { "capability": "workspace.addResource" }
+  }
+}
+```
+
+</TabItem>
+<TabItem value="cli" label="CLI">
+
+```bash
+cup --host ./dist/setup.js --subject user:admin \
+  tools call workspace.queryReceipts \
+  --args '{"capability":"workspace.addResource"}'
+```
+
+</TabItem>
+</Tabs>
+
 ### Stage 8: Explicit deny
+
+<Tabs groupId="surface">
+<TabItem value="cup" label="CUP">
 
 ```ts
 cup.policy.deny({
@@ -1156,6 +1379,42 @@ cup.policy.deny({
   priority: 200,
 });
 ```
+
+</TabItem>
+<TabItem value="mcp" label="MCP">
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "subjectId": "user:admin",
+    "name": "workspace.denyPolicy",
+    "arguments": {
+      "id": "carol-revoked",
+      "principalId": "user:carol",
+      "operation": "read",
+      "resourceId": "crm.contacts",
+      "priority": 200
+    },
+    "confirmation": { "confirmedBy": "user:admin" }
+  }
+}
+```
+
+</TabItem>
+<TabItem value="cli" label="CLI">
+
+```bash
+cup --host ./dist/setup.js --subject user:admin \
+  tools call workspace.denyPolicy \
+  --args '{"id":"carol-revoked","principalId":"user:carol","operation":"read","resourceId":"crm.contacts","priority":200}' \
+  --confirm
+```
+
+</TabItem>
+</Tabs>
 
 ### Stage 9: PostgreSQL snapshot
 
@@ -1186,47 +1445,47 @@ export CUP_HOST=./dist/setup.js
 
 The examples pass `--host` explicitly.
 
-### Stage 2: Alice extends the workspace
+### Stage 2: Admin extends the workspace
 
 ```bash
-cup --host ./dist/setup.js --subject user:alice init
-cup --host ./dist/setup.js --subject user:alice \
+cup --host ./dist/setup.js --subject user:admin init
+cup --host ./dist/setup.js --subject user:admin \
   --purpose initial-workspace-setup --goal "create crm and invite bob" \
   tools list
 ```
 
-`tools list` returns Alice's owner tools. The first mutating call is denied until `--confirm` binds the argument hash.
+`tools list` returns Admin's owner tools. The first mutating call is denied until `--confirm` binds the argument hash.
 
 ```bash
-cup --host ./dist/setup.js --subject user:alice \
+cup --host ./dist/setup.js --subject user:admin \
   tools call workspace.addResource \
   --args '{"resourceId":"crm.contacts","name":"CRM Contacts","sensitivity":"confidential"}' \
   --purpose initial-workspace-setup
 # status: denied, reasonCode: CONFIRMATION_REQUIRED
 
-cup --host ./dist/setup.js --subject user:alice \
+cup --host ./dist/setup.js --subject user:admin \
   tools call workspace.addResource \
   --args '{"resourceId":"crm.contacts","name":"CRM Contacts","sensitivity":"confidential"}' \
   --purpose initial-workspace-setup \
   --confirm --idempotency-key add-crm-contacts-v1
 # status: succeeded
 
-cup --host ./dist/setup.js --subject user:alice \
+cup --host ./dist/setup.js --subject user:admin \
   tools call workspace.addPrincipal \
   --args '{"principalId":"user:bob","role":"member"}' \
   --confirm --idempotency-key add-user-bob-v1
 # status: succeeded
 ```
 
-### Stage 3: Alice grants Bob a narrow view
+### Stage 3: Admin grants Bob a narrow view
 
 ```bash
-cup --host ./dist/setup.js --subject user:alice \
+cup --host ./dist/setup.js --subject user:admin \
   tools call workspace.allowPolicy \
   --args '{"id":"bob-discover-contacts","principalId":"user:bob","operation":"discover","resourceId":"crm.contacts","priority":50}' \
   --confirm --idempotency-key policy-bob-discover-v1
 
-cup --host ./dist/setup.js --subject user:alice \
+cup --host ./dist/setup.js --subject user:admin \
   tools call workspace.allowPolicy \
   --args '{"id":"bob-read-contacts","principalId":"user:bob","operation":"read","resourceId":"crm.contacts","priority":50,"scope":{"workspaceId":"acme"},"redactFields":["phone","personalEmail"]}' \
   --confirm --idempotency-key policy-bob-read-v1
@@ -1254,15 +1513,15 @@ cup --host ./dist/setup.js --subject user:bob \
 # status: denied, reasonCode: NO_MATCHING_ALLOW
 ```
 
-### Stage 5: Alice adds Carol with a time box
+### Stage 5: Admin adds Carol with a time box
 
 ```bash
-cup --host ./dist/setup.js --subject user:alice \
+cup --host ./dist/setup.js --subject user:admin \
   tools call workspace.addPrincipal \
   --args '{"principalId":"user:carol","role":"readonly"}' \
   --confirm --idempotency-key add-user-carol-v1
 
-cup --host ./dist/setup.js --subject user:alice \
+cup --host ./dist/setup.js --subject user:admin \
   tools call workspace.allowPolicy \
   --args '{"id":"carol-read-contacts-limited","principalId":"user:carol","operation":"read","resourceId":"crm.contacts","priority":30,"scope":{"workspaceId":"acme"},"expiresAt":"2026-10-03T16:00:00Z","redactFields":["phone","personalEmail","internalNotes"]}' \
   --confirm --idempotency-key policy-carol-read-v1
@@ -1271,7 +1530,7 @@ cup --host ./dist/setup.js --subject user:alice \
 ### Stage 6: Delegate, act as the bot, revoke
 
 ```bash
-cup --host ./dist/setup.js --subject user:alice \
+cup --host ./dist/setup.js --subject user:admin \
   tools call workspace.delegate \
   --args '{"to":"agent:setup-bot","capability":"workspace.addResource","operations":["execute"],"purpose":"add-projects-resource","expiresInMs":300000}' \
   --confirm
@@ -1281,9 +1540,9 @@ cup --host ./dist/setup.js --subject agent:setup-bot \
   --args '{"resourceId":"projects.board","name":"Projects Board","sensitivity":"internal"}' \
   --purpose add-projects-resource \
   --confirm --idempotency-key add-projects-board-v1 \
-  --delegation '{"id":"grant-setup-1","from":{"id":"user:alice"},"to":{"id":"agent:setup-bot"},"capability":"workspace.addResource","operations":["execute"],"purpose":"add-projects-resource","expiresAt":"2030-01-01T00:00:00Z"}'
+  --delegation '{"id":"grant-setup-1","from":{"id":"user:admin"},"to":{"id":"agent:setup-bot"},"capability":"workspace.addResource","operations":["execute"],"purpose":"add-projects-resource","expiresAt":"2030-01-01T00:00:00Z"}'
 
-cup --host ./dist/setup.js --subject user:alice \
+cup --host ./dist/setup.js --subject user:admin \
   tools call workspace.revokeGrant \
   --args '{"grantId":"grant-setup-1"}'
 ```
@@ -1291,7 +1550,7 @@ cup --host ./dist/setup.js --subject user:alice \
 ### Stage 7: Query receipts
 
 ```bash
-cup --host ./dist/setup.js --subject user:alice \
+cup --host ./dist/setup.js --subject user:admin \
   tools call workspace.queryReceipts \
   --args '{"capability":"workspace.addResource"}'
 ```
@@ -1299,7 +1558,7 @@ cup --host ./dist/setup.js --subject user:alice \
 ### Stage 8: Revoke Carol, then she is denied
 
 ```bash
-cup --host ./dist/setup.js --subject user:alice \
+cup --host ./dist/setup.js --subject user:admin \
   tools call workspace.denyPolicy \
   --args '{"id":"carol-revoked","principalId":"user:carol","operation":"read","resourceId":"crm.contacts","priority":200}' \
   --confirm --idempotency-key deny-carol-read-v1

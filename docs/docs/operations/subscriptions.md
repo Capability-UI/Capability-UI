@@ -5,11 +5,17 @@ sidebar_label: Subscriptions
 description: Subscribe to resource events and close subscriptions safely.
 ---
 
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
 # Subscriptions and revocation
 
 Subscriptions let a client receive changes for a resource after CUP authorizes a read subscription. The reference implementation provides an in-process event interface. A transport host can forward those events to WebSocket, SSE, native, or MCP subscribers.
 
 ## Subscribe
+
+<Tabs groupId="surface">
+<TabItem value="cup" label="CUP">
 
 ```ts
 import { CapabilityUI, subject, type ResourceEvent } from '@capability-ui/core';
@@ -37,6 +43,35 @@ subscription.on('access_removed', event => {
 
 cup.publish({ resource: { id: resource.id }, type: 'updated', data: { id: 'acct-1' } });
 ```
+
+</TabItem>
+<TabItem value="mcp" label="MCP">
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "resources/subscribe",
+  "params": {
+    "subjectId": "user:maya",
+    "uri": "cup://crm.accounts",
+    "events": ["updated", "deleted", "access_removed"],
+    "context": { "workspace": "acme", "purpose": "live-dashboard" }
+  }
+}
+```
+
+</TabItem>
+<TabItem value="cli" label="CLI">
+
+```bash
+# The reference CLI issues one JSON-RPC request. Long-lived notification
+# streams belong to the MCP transport host, not to a single cup process.
+echo 'Use MCP resources/subscribe over streamable HTTP or stdio.'
+```
+
+</TabItem>
+</Tabs>
 
 The subscription is authorized when it is created. The host must still publish `access_removed` when current authorization changes or a delegation expires. A long-lived transport should periodically re-check access if its threat model requires it.
 
