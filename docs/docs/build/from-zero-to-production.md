@@ -2,21 +2,22 @@
 id: from-zero-to-production
 title: From zero to production
 sidebar_label: From zero to production
-description: Build a CUP-governed system from one owner and one resource, either by calling the library directly or by growing the system through MCP conversations.
+description: Build a CUP-governed system from one owner and one resource, then grow it through MCP, hardcoded host contracts, or the CLI.
 ---
 
 # From zero to production
 
 A CUP system starts closed. The first useful state is one verified owner, one resource, and every operation allowed for that owner. From there the system grows because principals take actions, not because an engineer keeps editing policy files.
 
-This page has two paths after the same Stage 1 bootstrap:
+This page has three paths after the same Stage 1 bootstrap:
 
-| Path | Who is writing code | What later stages look like |
+| Path | Who is acting | What later stages look like |
 |---|---|---|
-| [Path A: Host library](#path-a-grow-the-system-with-the-host-library) | Your application | TypeScript calls to `cup.policy`, `cup.delegate`, `cup.execute` |
-| [Path B: MCP conversations](#path-b-grow-the-system-through-mcp) | An external agent connected as a principal | User messages, MCP tool calls, and tool responses |
+| [Path A: MCP conversations](#path-a-grow-the-system-through-mcp) | An external agent connected as a principal | User messages, MCP tool calls, and tool responses |
+| [Path B: Host contracts in code](#path-b-hardcode-contracts-in-application-code) | Your application | TypeScript calls to `cup.policy`, `cup.delegate`, `cup.execute` |
+| [Path C: CLI](#path-c-grow-the-system-through-the-cli) | A person or script using `cup` | The same MCP methods as Path A, typed as shell commands |
 
-Path B is the production shape most teams should study first. After Stage 1, people and agents should not import `@capability-ui/core`. They should ask, discover, and act through MCP. CUP stays behind the server and decides allow or deny.
+Path A is the production shape most teams should study first. After Stage 1, people and agents should not import `@capability-ui/core` to grow the workspace. They should ask, discover, and act through MCP. Path C is the same contract for terminals and scripts. Path B shows how a host can hardcode the same contracts in application code when an agent or CLI is not in the loop. CUP stays behind the server and decides allow or deny.
 
 ---
 
@@ -27,6 +28,7 @@ The host writes this once. It creates Alice, registers the workspace registry, g
 ```ts
 // setup.ts
 import {
+  createCupCli,
   createMCPServer,
   defineCapability,
   denyByDefault,
@@ -282,16 +284,18 @@ const server = createMCPServer({
   },
 });
 
-export { cup, alice, server };
+const cli = createCupCli({ cup, name: 'acme-workspace' });
+
+export { cup, alice, server, cli };
 ```
 
-Alice can discover, read, and change the registry. The MCP server is live. No other principal exists yet. From here, choose a path.
+Alice can discover, read, and change the registry. The MCP server and CLI are live. No other principal exists yet. From here, choose a path.
 
 ---
 
-## Path B: Grow the system through MCP
+## Path A: Grow the system through MCP
 
-After Stage 1, Path B never shows CUP library code. An agent connects as a principal. The user speaks in ordinary language. The agent only uses MCP methods: `initialize`, `tools/list`, `tools/call`, `resources/list`, and `resources/read`. CUP evaluates each call against the current subject and policy.
+After Stage 1, Path A never shows CUP library code. An agent connects as a principal. The user speaks in ordinary language. The agent only uses MCP methods: `initialize`, `tools/list`, `tools/call`, `resources/list`, and `resources/read`. CUP evaluates each call against the current subject and policy.
 
 Transcripts below use three voices:
 
@@ -1047,9 +1051,9 @@ Bob, Carol, and the setup bot still only speak MCP. Fail-closed behavior is the 
 
 ---
 
-## Path A: Grow the system with the host library
+## Path B: Hardcode contracts in application code
 
-Use this path when you are embedding CUP inside application code and want the same stages as direct TypeScript. Path B is the same story over MCP.
+Use this path when you are embedding CUP inside application code and want the same stages as typed TypeScript contracts. Path A is the same story over MCP. Path C is the same story over the CLI.
 
 ### Stage 2: Register MCP and owner tools in process
 
@@ -1170,18 +1174,160 @@ for (const policy of await store.policies()) {
 
 ---
 
-## What both paths prove
+## Path C: Grow the system through the CLI
 
-| CUP concept | Path B moment | Path A moment |
-|---|---|---|
-| Deny by default | Bob's empty `tools/list` | Stage 4 `NO_MATCHING_ALLOW` |
-| Discover is not read | Bob lists contacts, then reads them | Separate `discover` and `read` policies |
-| Execute is a third decision | Bob's forged `workspace.addResource` | Missing execute policy |
-| Confirmation | Alice's first add-resource denial | `prepare` then `execute` |
-| Delegation | Setup bot succeeds, then fails after revoke | `cup.delegate` and `revokeGrant` |
-| Redaction | Bob's read omits phone | `redact` obligations |
-| Revocation | Carol's `EXPLICIT_DENY` | Higher-priority deny |
-| Receipts | `workspace.queryReceipts` | `cup.receipts.find` |
-| SQL | Same MCP calls, durable store | `PostgresPersistence` |
+Path C is Path A with a keyboard. After Stage 1, there is still no CUP TypeScript in the operator's hands. `cup` loads `setup.js`, sets `--subject`, and issues the same MCP methods. See [CUP CLI](../runtimes/cli.md) for flags.
 
-The host writes Stage 1. After that, production growth is a series of authorized actions. MCP is the wire. CUP is the decision.
+Run every command from the directory that compiled Stage 1:
+
+```bash
+export CUP_HOST=./dist/setup.js
+```
+
+The examples pass `--host` explicitly.
+
+### Stage 2: Alice extends the workspace
+
+```bash
+cup --host ./dist/setup.js --subject user:alice init
+cup --host ./dist/setup.js --subject user:alice \
+  --purpose initial-workspace-setup --goal "create crm and invite bob" \
+  tools list
+```
+
+`tools list` returns Alice's owner tools. The first mutating call is denied until `--confirm` binds the argument hash.
+
+```bash
+cup --host ./dist/setup.js --subject user:alice \
+  tools call workspace.addResource \
+  --args '{"resourceId":"crm.contacts","name":"CRM Contacts","sensitivity":"confidential"}' \
+  --purpose initial-workspace-setup
+# status: denied, reasonCode: CONFIRMATION_REQUIRED
+
+cup --host ./dist/setup.js --subject user:alice \
+  tools call workspace.addResource \
+  --args '{"resourceId":"crm.contacts","name":"CRM Contacts","sensitivity":"confidential"}' \
+  --purpose initial-workspace-setup \
+  --confirm --idempotency-key add-crm-contacts-v1
+# status: succeeded
+
+cup --host ./dist/setup.js --subject user:alice \
+  tools call workspace.addPrincipal \
+  --args '{"principalId":"user:bob","role":"member"}' \
+  --confirm --idempotency-key add-user-bob-v1
+# status: succeeded
+```
+
+### Stage 3: Alice grants Bob a narrow view
+
+```bash
+cup --host ./dist/setup.js --subject user:alice \
+  tools call workspace.allowPolicy \
+  --args '{"id":"bob-discover-contacts","principalId":"user:bob","operation":"discover","resourceId":"crm.contacts","priority":50}' \
+  --confirm --idempotency-key policy-bob-discover-v1
+
+cup --host ./dist/setup.js --subject user:alice \
+  tools call workspace.allowPolicy \
+  --args '{"id":"bob-read-contacts","principalId":"user:bob","operation":"read","resourceId":"crm.contacts","priority":50,"scope":{"workspaceId":"acme"},"redactFields":["phone","personalEmail"]}' \
+  --confirm --idempotency-key policy-bob-read-v1
+```
+
+### Stage 4: Bob is allowed to read and denied to create
+
+```bash
+cup --host ./dist/setup.js --subject user:bob \
+  --context '{"workspaceId":"acme"}' --purpose contact_lookup \
+  resources list
+# resources: [crm.contacts]
+
+cup --host ./dist/setup.js --subject user:bob \
+  --context '{"workspaceId":"acme"}' --purpose contact_lookup \
+  resources read cup://crm.contacts
+# items omit phone and personalEmail
+
+cup --host ./dist/setup.js --subject user:bob tools list
+# tools: []
+
+cup --host ./dist/setup.js --subject user:bob \
+  tools call workspace.addResource \
+  --args '{"resourceId":"crm.leads","name":"Leads","sensitivity":"confidential"}'
+# status: denied, reasonCode: NO_MATCHING_ALLOW
+```
+
+### Stage 5: Alice adds Carol with a time box
+
+```bash
+cup --host ./dist/setup.js --subject user:alice \
+  tools call workspace.addPrincipal \
+  --args '{"principalId":"user:carol","role":"readonly"}' \
+  --confirm --idempotency-key add-user-carol-v1
+
+cup --host ./dist/setup.js --subject user:alice \
+  tools call workspace.allowPolicy \
+  --args '{"id":"carol-read-contacts-limited","principalId":"user:carol","operation":"read","resourceId":"crm.contacts","priority":30,"scope":{"workspaceId":"acme"},"expiresAt":"2026-10-03T16:00:00Z","redactFields":["phone","personalEmail","internalNotes"]}' \
+  --confirm --idempotency-key policy-carol-read-v1
+```
+
+### Stage 6: Delegate, act as the bot, revoke
+
+```bash
+cup --host ./dist/setup.js --subject user:alice \
+  tools call workspace.delegate \
+  --args '{"to":"agent:setup-bot","capability":"workspace.addResource","operations":["execute"],"purpose":"add-projects-resource","expiresInMs":300000}' \
+  --confirm
+
+cup --host ./dist/setup.js --subject agent:setup-bot \
+  tools call workspace.addResource \
+  --args '{"resourceId":"projects.board","name":"Projects Board","sensitivity":"internal"}' \
+  --purpose add-projects-resource \
+  --confirm --idempotency-key add-projects-board-v1 \
+  --delegation '{"id":"grant-setup-1","from":{"id":"user:alice"},"to":{"id":"agent:setup-bot"},"capability":"workspace.addResource","operations":["execute"],"purpose":"add-projects-resource","expiresAt":"2030-01-01T00:00:00Z"}'
+
+cup --host ./dist/setup.js --subject user:alice \
+  tools call workspace.revokeGrant \
+  --args '{"grantId":"grant-setup-1"}'
+```
+
+### Stage 7: Query receipts
+
+```bash
+cup --host ./dist/setup.js --subject user:alice \
+  tools call workspace.queryReceipts \
+  --args '{"capability":"workspace.addResource"}'
+```
+
+### Stage 8: Revoke Carol, then she is denied
+
+```bash
+cup --host ./dist/setup.js --subject user:alice \
+  tools call workspace.denyPolicy \
+  --args '{"id":"carol-revoked","principalId":"user:carol","operation":"read","resourceId":"crm.contacts","priority":200}' \
+  --confirm --idempotency-key deny-carol-read-v1
+
+cup --host ./dist/setup.js --subject user:carol \
+  --context '{"workspaceId":"acme"}' \
+  resources read cup://crm.contacts
+# error: CUP_NOT_AUTHORIZED:EXPLICIT_DENY
+```
+
+### Stage 9: Same CLI against production SQL
+
+Point `--host` at a module that loads `PostgresPersistence` and still exports `{ cup }`. The commands in Stages 2 through 8 do not change.
+
+---
+
+## What all three paths prove
+
+| CUP concept | Path A (MCP) | Path B (code) | Path C (CLI) |
+|---|---|---|---|
+| Deny by default | Bob's empty `tools/list` | Stage 4 `NO_MATCHING_ALLOW` | `cup --subject user:bob tools list` |
+| Discover is not read | Bob lists, then reads | Separate `discover` and `read` policies | `resources list` then `resources read` |
+| Execute is a third decision | Forged `tools/call` | Missing execute policy | `tools call workspace.addResource` |
+| Confirmation | First add-resource denial | `prepare` then `execute` | call without `--confirm`, then with it |
+| Delegation | Setup bot, then revoke | `cup.delegate` / `revokeGrant` | `workspace.delegate` then `revokeGrant` |
+| Redaction | Bob's read omits phone | `redact` obligations | `resources read` as Bob |
+| Revocation | Carol's `EXPLICIT_DENY` | Higher-priority deny | Carol's `resources read` |
+| Receipts | `workspace.queryReceipts` | `cup.receipts.find` | same tool via CLI |
+| SQL | Same MCP calls, durable store | `PostgresPersistence` | Same `cup` commands, new `--host` |
+
+The host writes Stage 1. After that, production growth is a series of authorized actions. MCP and the CLI are wires. CUP is the decision.

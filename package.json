@@ -11,6 +11,9 @@
       "import": "./dist/src/index.js"
     }
   },
+  "bin": {
+    "cup": "./dist/src/bin/cup.js"
+  },
   "files": [
     "dist",
     "README.md",
@@ -18,14 +21,14 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "npm run build && node --test dist/test/**/*.test.js",
+    "test": "npm run build && node --test dist/test/*.test.js",
     "check": "tsc -p tsconfig.json --noEmit"
   },
   "keywords": [
     "authorization",
     "capabilities",
     "generative-ui",
-    "mcp",
+    "cli",
     "policy"
   ],
   "license": "MIT",

@@ -4,3 +4,4 @@ export * from './persistence.js';
 export * from './protocol.js';
 export * from './components.js';
 export * from './mcp-client.js';
+export * from './cli.js';

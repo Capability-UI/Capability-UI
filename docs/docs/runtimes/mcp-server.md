@@ -85,3 +85,5 @@ const call = await mcp.handle({
 ## MCP errors
 
 Unknown methods return JSON-RPC `-32601`. Authentication, policy, validation, and handler failures return a JSON-RPC `-32000` response with the CUP reason embedded in the message. A production profile may map reason codes into a stable public error schema.
+
+The same methods are available from the [CUP CLI](cli). Use that when a person or script should issue Path A operations without an MCP agent.

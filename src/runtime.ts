@@ -289,7 +289,15 @@ export function createMCPServer(options: { cup: CapabilityUI; name: string; auth
         return { jsonrpc: '2.0', id: request.id, result: { resourceTemplates: templates } };
       }
       if (request.method === 'tools/list') { const view = await cup.project({ subject: subjectValue, goal: String(params.goal ?? ''), context }); return { jsonrpc: '2.0', id: request.id, result: { tools: view.capabilities.map(c => ({ name: c.id, description: `${c.id} (${c.risk} risk)`, inputSchema: c.inputSchema, _cup: c })) } }; }
-      if (request.method === 'tools/call') { const name = String(params.name ?? ''); const args = params.arguments ?? {}; const receipt = await cup.execute({ subject: subjectValue, capability: name, input: args, purpose: context.purpose, context }); return { jsonrpc: '2.0', id: request.id, result: { isError: receipt.status !== 'succeeded', content: [{ type: 'text', text: JSON.stringify(receipt) }] } }; }
+      if (request.method === 'tools/call') {
+        const name = String(params.name ?? '');
+        const args = params.arguments ?? {};
+        const confirmation = (params.confirmation ?? context.confirmation) as Confirmation | undefined;
+        const idempotencyKey = String(params.idempotencyKey ?? context.idempotencyKey ?? '') || undefined;
+        const actionToken = typeof params.actionToken === 'string' ? params.actionToken : undefined;
+        const receipt = await cup.execute({ subject: subjectValue, capability: name, input: args, purpose: context.purpose, context, confirmation, idempotencyKey, actionToken, delegation: params.delegation as DelegationGrant | undefined });
+        return { jsonrpc: '2.0', id: request.id, result: { isError: receipt.status !== 'succeeded', content: [{ type: 'text', text: JSON.stringify(receipt) }] } };
+      }
       if (request.method === 'prompts/list') return { jsonrpc: '2.0', id: request.id, result: { prompts: (options.prompts ?? []).map(prompt => ({ name: prompt.name, description: prompt.description, arguments: prompt.arguments })) } };
       if (request.method === 'prompts/get') { const prompt = (options.prompts ?? []).find(item => item.name === String(params.name ?? '')); if (!prompt) return { jsonrpc: '2.0', id: request.id, error: { code: -32602, message: 'Prompt not found' } }; return { jsonrpc: '2.0', id: request.id, result: await prompt.get((params.arguments as Record<string, unknown>) ?? {}, subjectValue) }; }
       if (request.method === 'resources/subscribe') { const uri = String(params.uri ?? ''); const subscription = await cup.subscribe({ subject: subjectValue, resource: uri.replace(/^cup:\/\//, ''), events: (params.events as string[]) ?? ['updated'], context }); return { jsonrpc: '2.0', id: request.id, result: { subscribed: true, close: typeof subscription.close === 'function' } }; }

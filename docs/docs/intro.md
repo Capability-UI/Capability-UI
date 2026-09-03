@@ -36,13 +36,15 @@ sequenceDiagram
 
 - [The mental model](foundations/mental-model): resources, capabilities, subjects, policies, views, and receipts.
 - [Agent neutrality](foundations/agent-neutrality): how to govern an existing assistant without putting an agent framework in CUP.
-- [From zero to production](build/from-zero-to-production): one owner and one resource, then two growth paths (host library calls, or MCP conversations).
+- [From zero to production](build/from-zero-to-production): one owner and one resource, then MCP conversations, hardcoded host contracts, or the CLI.
+- [Generative UI](build/generative-ui): render an `AuthorizedView` into forms and tables without treating the screen as authorization.
 - [Installation](build/installation): add the package and run a complete first example.
 - [Reading data](build/read-data): discovery, scopes, field selection, redaction, adapters, and read receipts.
 - [Executing actions](build/execute-action): schemas, previews, confirmation, re-authorization, idempotency, and failure receipts.
 - [Policies](policies/authorization): default deny, precedence, conditions, expiry, and reason codes.
 - [Delegation](policies/delegation): issue a bounded grant to an external assistant or service.
 - [MCP](runtimes/mcp-server): expose CUP-controlled resources and tools through JSON-RPC.
+- [CLI](runtimes/cli): call those same methods from a terminal.
 - [Testing](operations/testing): test successful paths and denial paths as one security boundary.
 
 ## Version and status

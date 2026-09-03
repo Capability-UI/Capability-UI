@@ -65,8 +65,15 @@ import {
 ## MCP profile
 
 - `createMCPServer({ cup, name, authenticate? })` returns an object with `handle(request)`.
-- Supported methods in the reference profile: `initialize`, `resources/list`, `resources/read`, `tools/list`, and `tools/call`.
+- Supported methods in the reference profile: `initialize`, `resources/list`, `resources/read`, `resources/templates/list`, `tools/list`, `tools/call`, `prompts/list`, `prompts/get`, and `resources/subscribe`.
+- `tools/call` forwards confirmation, idempotency keys, action tokens, and delegation grants when the client supplies them.
 - The MCP profile is transport-neutral. Host it behind HTTP, WebSocket, stdio, or another framing layer.
+
+## CLI profile
+
+- `runCupCli({ cup, argv })` maps `cup resources list` and `cup tools call` onto those MCP methods.
+- `createCupCli({ cup })` binds a host runtime for scripts and tests.
+- The `cup` binary loads `--host <module>` and prints the JSON-RPC response.
 
 ## Adapter contracts
 

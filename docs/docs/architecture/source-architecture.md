@@ -15,7 +15,10 @@ src/
 ├── components.ts     Registry, policy, projector, and executor facades
 ├── adapters.ts       Host integration contracts and resource registry
 ├── persistence.ts    SQL client contract, PostgreSQL repository, schema constant
-└── protocol.ts       Action-token service, MCP transport types, renderer helpers
+├── protocol.ts       Action-token service, MCP transport types, renderer helpers
+├── mcp-client.ts     MCP client and namespace mount helpers
+├── cli.ts            MCP-shaped command line client
+└── bin/cup.ts        `cup` executable entry
 sql/
 └── 001_cup_initial.sql  PostgreSQL reference migration
 ```
@@ -30,6 +33,7 @@ sql/
 | `CapabilityRegistry.listDiscoverable(request?)` | `components.ts` |
 | Field-level `writable` on `AuthorizedResource.fields` | `runtime.ts` `project()` |
 | `resources/templates/list` MCP method | `runtime.ts` `createMCPServer()` |
+| MCP-shaped CLI | `cli.ts`, `bin/cup.ts` |
 | `validDuring` in PostgreSQL persistence | `persistence.ts` |
 | `PostgresPersistence.revokeGrant(grantId)` | `persistence.ts` |
 | `CupPersistence.revokeGrant` interface | `persistence.ts` |

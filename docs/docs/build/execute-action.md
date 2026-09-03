@@ -109,3 +109,5 @@ Use `none` for reads or harmless local operations. Use `preview` when the client
 ## Idempotency and reversibility
 
 `idempotency: 'required'` tells clients that retries must carry a stable idempotency key. The handler or host service must enforce uniqueness. `reversibility` describes what the product can undo. It is metadata for policy and UI decisions, not an automatic rollback mechanism.
+
+To turn the same capability schema into a generated form, see [Generative UI](generative-ui).

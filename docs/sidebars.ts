@@ -12,7 +12,7 @@ const sidebars: SidebarsConfig = {
     {
       type: 'category',
       label: 'Build with CUP',
-      items: ['build/installation', 'build/from-zero-to-production', 'build/first-resource', 'build/read-data', 'build/execute-action'],
+      items: ['build/installation', 'build/from-zero-to-production', 'build/first-resource', 'build/read-data', 'build/execute-action', 'build/generative-ui'],
     },
     {
       type: 'category',
@@ -22,7 +22,7 @@ const sidebars: SidebarsConfig = {
     {
       type: 'category',
       label: 'External runtimes',
-      items: ['runtimes/agent-resources', 'runtimes/runtime-adapters', 'runtimes/mcp-server'],
+      items: ['runtimes/agent-resources', 'runtimes/runtime-adapters', 'runtimes/mcp-server', 'runtimes/cli'],
     },
     {
       type: 'category',

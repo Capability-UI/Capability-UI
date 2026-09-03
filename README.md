@@ -27,12 +27,13 @@ CUP does not currently persist resources or policies to SQL by itself. The host 
 - Delegation grants with purpose, expiration, operation, and scope limits
 - `revokeGrant()` to invalidate a grant before it expires (in-memory and PostgreSQL)
 - `resources/templates/list` MCP method for inspectable resource schemas
+- MCP-shaped `cup` CLI (`runCupCli`, `createCupCli`) for the same methods from a terminal
 - `validDuring` time-window support in PostgreSQL persistence
 - No dependency on an agent framework, UI framework, database, or MCP implementation
 
 ## Learn by example
 
-The [from zero to production](docs/docs/build/from-zero-to-production.md) walkthrough starts with one owner, one resource, and full authority. Path A grows that system with host library calls. Path B uses CUP code only in Stage 1, then shows the rest as user messages and MCP tool calls and responses.
+The [from zero to production](docs/docs/build/from-zero-to-production.md) walkthrough starts with one owner, one resource, and full authority. Path A grows that system through MCP conversations. Path B hardcodes the same contracts in host TypeScript. Path C repeats Path A with the `cup` CLI. [Generative UI](docs/docs/build/generative-ui.md) shows how to render an authorized view.
 
 ## Install
 
@@ -142,6 +143,17 @@ const result = await cup.execute({
 });
 ```
 
+## CLI
+
+The `cup` binary is an MCP client. Point it at a host module that exports `{ cup }`:
+
+```bash
+npx cup --host ./dist/setup.js --subject user:alice tools list
+npx cup --host ./dist/setup.js --subject user:bob resources read cup://crm.contacts
+```
+
+See [CUP CLI](docs/docs/runtimes/cli.md) and Path C in the walkthrough.
+
 ## Specification
 
 The complete specification is versioned with the repository in [`SPECIFICATION.md`](SPECIFICATION.md) and [`specification/index.html`](specification/index.html). The Docusaurus site serves it at `/specification/`.
@@ -158,7 +170,7 @@ npm run build       # production static site
 npm run serve       # serve the production build locally
 ```
 
-The docs cover the complete runtime flow, resource and capability modeling, authorization, scopes, redaction, confirmations, delegation, external agent runtimes, MCP, receipts, subscriptions, testing, and production hardening.
+The docs cover the complete runtime flow, resource and capability modeling, authorization, scopes, redaction, confirmations, delegation, external agent runtimes, MCP, the CLI, generative UI, receipts, subscriptions, testing, and production hardening.
 
 ## Development
 
