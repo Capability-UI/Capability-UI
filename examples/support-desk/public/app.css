@@ -1,0 +1,73 @@
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap");
+:root {
+  --bg: #eef2f5;
+  --ink: #12202c;
+  --muted: #5c6d7b;
+  --line: #d5dee6;
+  --card: #ffffff;
+  --accent: #0b5cab;
+  --urgent: #9b1c2c;
+  --font: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--font); }
+.top {
+  display: flex; align-items: center; gap: 20px; padding: 12px 24px; min-height: 64px;
+  background: #102433; color: #e8eef3;
+}
+.brand { display: flex; gap: 12px; align-items: center; }
+.logo {
+  width: 36px; height: 36px; display: grid; place-items: center; background: #1c9bd4; color: #082033;
+  font: 600 12px var(--mono); border-radius: 8px;
+}
+.brand p { margin: 2px 0 0; color: #9db4c4; font-size: 12px; }
+.top nav { margin-left: auto; }
+.top a { color: #d5e8f4; text-decoration: none; font-size: 13px; padding: 8px 10px; border-radius: 8px; }
+.top a:hover { background: rgba(255,255,255,0.06); }
+.who { display: grid; gap: 4px; font-size: 11px; color: #9db4c4; }
+.who select { background: #0b1b27; color: #e8eef3; border: 1px solid #2a4558; border-radius: 8px; padding: 8px 10px; }
+.split { display: grid; grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); height: calc(100% - 64px); }
+.queue { border-right: 1px solid var(--line); overflow: auto; background: var(--card); }
+.queue-head { padding: 24px 20px 12px; }
+.queue-head h1 { margin: 0; font-size: 22px; letter-spacing: -0.02em; }
+.queue-head p { margin: 8px 0 0; color: var(--muted); font-size: 13px; }
+.ticket {
+  display: grid; gap: 6px; width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--line);
+  background: transparent; padding: 16px 20px; cursor: pointer; font: inherit; color: inherit;
+}
+.ticket:hover { background: #f5f8fb; }
+.ticket.on { background: #e8f2fa; box-shadow: inset 3px 0 0 var(--accent); }
+.ticket strong { font-size: 14px; font-weight: 600; }
+.ticket span { color: var(--muted); font-size: 12px; }
+.pri { font: 500 11px var(--mono); letter-spacing: 0.04em; text-transform: uppercase; }
+.pri.urgent, .pri.high { color: var(--urgent); }
+.detail { display: flex; flex-direction: column; overflow: hidden; background: var(--bg); }
+.detail-body { overflow: auto; padding: 36px 48px 24px; flex: 1; }
+.empty {
+  margin: 96px auto; max-width: 28ch; text-align: center; color: var(--muted); font-size: 16px; line-height: 1.5;
+}
+h2 { margin: 0 0 12px; font-size: 26px; letter-spacing: -0.03em; }
+.pills { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+.pill { background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; font-size: 12px; }
+.internal { background: #fff7ea; border: 1px solid #edd6a6; border-radius: 12px; padding: 16px; margin: 8px 0 24px; }
+.internal p { margin: 8px 0 0; }
+.thread { display: grid; gap: 12px; margin: 16px 0 28px; }
+.comment { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; display: grid; gap: 6px; }
+.stack { display: grid; gap: 12px; max-width: 36rem; }
+.composer {
+  border-top: 1px solid var(--line); background: color-mix(in srgb, var(--card) 80%, var(--bg));
+  padding: 16px 48px 24px; display: grid; gap: 12px;
+}
+.composer .stack { max-width: 36rem; }
+.actions-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+.actions-row form { display: grid; gap: 8px; }
+textarea, input, select { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font: 14px var(--font); }
+button.primary, button.danger {
+  height: 40px; border: 0; border-radius: 10px; padding: 0 16px; cursor: pointer; font: 600 14px var(--font); width: fit-content;
+}
+button.primary { background: var(--accent); color: white; }
+button.danger { background: var(--urgent); color: white; }
+.flash { color: #0d7a4f; margin-top: 12px; }
+.warn { color: var(--urgent); margin-top: 12px; }
+.quiet { color: var(--muted); margin: 0 0 8px; font: 500 12px var(--mono); }

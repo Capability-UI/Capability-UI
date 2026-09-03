@@ -1,0 +1,24 @@
+{
+  "name": "capability-ui-examples",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "crm": "tsx crm-workspace/src/server.ts",
+    "crm:stdio": "tsx crm-workspace/src/stdio.ts",
+    "support": "tsx support-desk/src/server.ts",
+    "support:stdio": "tsx support-desk/src/stdio.ts",
+    "agent": "tsx agent-studio/src/server.ts",
+    "agent:stdio": "tsx agent-studio/src/stdio.ts",
+    "test": "tsx --test smoke.test.ts"
+  },
+  "dependencies": {
+    "@capability-ui/core": "file:..",
+    "sql.js": "^1.12.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/sql.js": "^1.4.9",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.0"
+  }
+}

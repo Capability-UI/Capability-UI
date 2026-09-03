@@ -21,6 +21,11 @@ src/
 └── bin/cup.ts        `cup` executable entry
 sql/
 └── 001_cup_initial.sql  PostgreSQL reference migration
+examples/
+├── shared/           HTTP host, MCP JSON-RPC, stdio, generative UI
+├── crm-workspace/    Contacts, notes, confirmed mail
+├── support-desk/     Tickets, assignment, escalation
+└── agent-studio/     PydanticAI chat plus inventory view
 ```
 
 ## Feature summary (v0.2.0)
@@ -93,7 +98,7 @@ The host should cache this snapshot by the durable policy revision and rebuild i
 
 ## Docs site live examples
 
-The [Generative UI](../build/generative-ui.md) page mounts React demos from `docs/src/components/GenUiExamples.tsx`. They are a renderer of a canned `AuthorizedView`, not a browser-hosted CUP runtime.
+The [Generative UI](../build/generative-ui.md) page mounts React demos from `docs/src/components/GenUiExamples.tsx`. They are a renderer of a canned `AuthorizedView`, not a browser-hosted CUP runtime. Clone-and-run hosts with a live runtime and MCP server are in [`examples/`](../build/examples.md).
 
 | Export | What it demonstrates |
 |---|---|

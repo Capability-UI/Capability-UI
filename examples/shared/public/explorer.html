@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Data explorer</title>
+    <link rel="stylesheet" href="/explorer.css" />
+  </head>
+  <body>
+    <header class="ex-top">
+      <a class="back" id="back" href="/">Back to app</a>
+      <div class="ex-title">
+        <p class="kicker">SQLite · read only</p>
+        <h1 id="title">Data explorer</h1>
+      </div>
+      <nav class="tabs" id="tabs">
+        <button type="button" class="tab on" data-pane="diagram">Diagram</button>
+        <button type="button" class="tab" data-pane="access">Access model</button>
+        <button type="button" class="tab" data-pane="browse">Browse</button>
+        <button type="button" class="tab" data-pane="sql">SQL</button>
+      </nav>
+    </header>
+    <section class="pane on" id="pane-diagram">
+      <div class="diagram-bar">
+        <p class="lede" id="diagram-lede"></p>
+        <div class="zoom-tools">
+          <button type="button" id="zoom-out" aria-label="Zoom out">-</button>
+          <span id="zoom-label">100%</span>
+          <button type="button" id="zoom-in" aria-label="Zoom in">+</button>
+          <button type="button" class="zoom-fit" id="zoom-fit">Fit</button>
+        </div>
+      </div>
+      <div class="legend">
+        <span><i class="swatch table"></i> Table</span>
+        <span><i class="swatch resource"></i> Foreign key</span>
+        <span><i class="swatch person"></i> Primary key</span>
+      </div>
+      <div class="diagram-viewport" id="diagram-viewport">
+        <div class="diagram-world" id="diagram-world"></div>
+      </div>
+    </section>
+    <section class="pane" id="pane-access">
+      <div class="diagram-bar">
+        <p class="lede" id="access-lede"></p>
+        <div class="zoom-tools">
+          <button type="button" id="access-zoom-out" aria-label="Zoom out">-</button>
+          <span id="access-zoom-label">100%</span>
+          <button type="button" id="access-zoom-in" aria-label="Zoom in">+</button>
+          <button type="button" class="zoom-fit" id="access-zoom-fit">Fit</button>
+        </div>
+      </div>
+      <div class="legend">
+        <span><i class="swatch person"></i> Person</span>
+        <span><i class="swatch resource"></i> Resource</span>
+        <span><i class="swatch table"></i> Table</span>
+      </div>
+      <div class="matrix-wrap" id="matrix"></div>
+      <div class="access-layout">
+        <div class="diagram-viewport" id="access-viewport">
+          <div class="diagram-world" id="access-world"></div>
+        </div>
+        <div class="grant-list" id="grants"></div>
+      </div>
+    </section>
+    <section class="pane" id="pane-browse">
+      <div class="ex-shell">
+        <aside class="schema" id="schema"></aside>
+        <div class="grid-wrap"><table id="grid"></table></div>
+      </div>
+    </section>
+    <section class="pane" id="pane-sql">
+      <div class="sql-wrap">
+        <label class="sql-label">Statement</label>
+        <textarea id="sql" spellcheck="false"></textarea>
+        <div class="sql-actions">
+          <button type="button" id="run">Run</button>
+          <p id="sql-error" class="error" hidden></p>
+        </div>
+        <div class="grid-wrap tall"><table id="sql-grid"></table></div>
+      </div>
+    </section>
+    <script src="/explorer.js" type="module"></script>
+  </body>
+</html>

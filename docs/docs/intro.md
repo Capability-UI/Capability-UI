@@ -38,6 +38,7 @@ sequenceDiagram
 - [Agent neutrality](foundations/agent-neutrality): how to govern an existing assistant without putting an agent framework in CUP.
 - [From zero to production](build/from-zero-to-production): one owner and one resource, then MCP conversations, hardcoded host contracts, or the CLI.
 - [Generative UI](build/generative-ui): render an `AuthorizedView` into forms and tables without treating the screen as authorization.
+- [Example applications](build/examples): clone-and-run CRM, support desk, and PydanticAI studio hosts, each exposing MCP.
 - [Installation](build/installation): add the package and run a complete first example.
 - [Reading data](build/read-data): discovery, scopes, field selection, redaction, adapters, and read receipts.
 - [Executing actions](build/execute-action): schemas, previews, confirmation, re-authorization, idempotency, and failure receipts.

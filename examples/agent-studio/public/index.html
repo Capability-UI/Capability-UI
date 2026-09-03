@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Keel</title>
+    <link rel="stylesheet" href="/app.css" />
+  </head>
+  <body>
+    <header class="top">
+      <div class="brand">
+        <span class="mark">Keel</span>
+        <span class="yard">Harbor yard 3</span>
+      </div>
+      <nav>
+        <button type="button" class="tab on" data-view="inventory">Inventory</button>
+        <button type="button" class="tab" data-view="orders">Purchase orders</button>
+        <a href="/explorer.html">Data explorer</a>
+      </nav>
+      <label class="who">
+        Shift
+        <select id="principal"></select>
+      </label>
+    </header>
+    <div class="layout">
+      <main>
+        <section id="inventory"></section>
+        <section id="orders" hidden></section>
+      </main>
+      <aside class="copilot">
+        <header>
+          <h2>Copilot</h2>
+          <p>Asks the warehouse model. Changes still go through your signed-in role.</p>
+        </header>
+        <details class="model" id="model-form">
+          <summary>Model connection</summary>
+          <input id="openai-base" placeholder="API base URL" />
+          <input id="openai-key" type="password" placeholder="API key" />
+          <input id="openai-model" placeholder="Model" />
+        </details>
+        <div class="log" id="chat-log"></div>
+        <form class="ask" id="chat-form">
+          <textarea id="chat-input" rows="3" placeholder="Ask about stock, drafts, or a pick"></textarea>
+          <button type="submit">Ask</button>
+        </form>
+      </aside>
+    </div>
+    <dialog id="dialog"></dialog>
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

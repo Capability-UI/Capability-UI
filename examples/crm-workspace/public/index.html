@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Meridian</title>
+    <link rel="stylesheet" href="/app.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="rail">
+        <p class="mark">Meridian</p>
+        <nav>
+          <button type="button" class="nav on" data-view="pipeline">Pipeline</button>
+          <button type="button" class="nav" data-view="accounts">Accounts</button>
+        </nav>
+        <a class="nav foot" href="/explorer.html">Data explorer</a>
+      </aside>
+      <div class="main">
+        <header class="bar">
+          <div>
+          <p class="quiet" id="context">Open deals this quarter</p>
+          <h1 id="page-title">Pipeline</h1>
+          </div>
+          <label class="who">
+            Signed in as
+            <select id="principal"></select>
+          </label>
+        </header>
+        <div id="board" class="board"></div>
+        <p id="closed-recap" class="closed-recap" hidden></p>
+        <div id="accounts" class="accounts" hidden></div>
+      </div>
+    </div>
+    <div class="scrim" id="scrim" hidden></div>
+    <aside class="drawer" id="drawer" hidden></aside>
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

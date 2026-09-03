@@ -5,3 +5,7 @@ dist/
 docs/node_modules/
 docs/build/
 docs/.docusaurus/
+examples/node_modules/
+examples/**/.venv/
+examples/**/.env
+examples/**/data/

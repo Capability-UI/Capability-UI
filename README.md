@@ -35,6 +35,8 @@ CUP does not currently persist resources or policies to SQL by itself. The host 
 
 The [from zero to production](docs/docs/build/from-zero-to-production.md) walkthrough starts with one owner, one resource, and full authority. Path A grows that system through MCP conversations. Path B hardcodes the same contracts in host TypeScript. Path C repeats Path A with the `cup` CLI. [Generative UI](docs/docs/build/generative-ui.md) shows how to render an authorized view.
 
+Runnable hosts live in [`examples/`](examples/README.md): Meridian (CRM), Clearline (service desk), and Keel (warehouse with a copilot). Each process serves a product UI, a SQLite data explorer, and MCP.
+
 ## Install
 
 ```bash

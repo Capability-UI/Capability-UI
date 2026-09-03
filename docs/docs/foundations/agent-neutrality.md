@@ -74,7 +74,7 @@ const owner = subject('user:john', { role: 'owner', workspace: 'acme' });
 // This function belongs to the host's chosen assistant runtime.
 async function invokeExternalRuntime(input: unknown, context: ExecutionContext) {
   // Send only the input and context that the host has decided to disclose.
-  return { taskId: context.requestId, status: 'submitted', input };
+  return { taskId: context.requestId, actorId: context.actorId, status: 'submitted', input };
 }
 
 const runContractReview = defineCapability({

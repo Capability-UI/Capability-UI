@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CUP example</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div id="app" class="shell">
+      <header class="topbar">
+        <div>
+          <p class="kicker" id="example-name">CUP</p>
+          <h1 id="example-title">Loading</h1>
+          <p class="subtitle" id="example-subtitle"></p>
+        </div>
+        <div class="topbar-actions">
+          <label class="field">
+            <span>Principal</span>
+            <select id="principal"></select>
+          </label>
+          <p class="mcp-chip" id="mcp-chip">MCP</p>
+        </div>
+      </header>
+      <div class="workspace" id="workspace">
+        <aside class="sidebar" id="chat-pane" hidden>
+          <div class="sidebar-head">
+            <h2>Agent</h2>
+            <p>PydanticAI talks to CUP over MCP. The screen is an authorized view, not the security boundary.</p>
+          </div>
+          <form class="model-form" id="model-form">
+            <label class="field">
+              <span>OpenAI base URL</span>
+              <input id="openai-base" placeholder="https://api.openai.com/v1" autocomplete="off" />
+            </label>
+            <label class="field">
+              <span>API key</span>
+              <input id="openai-key" type="password" placeholder="sk-... or leave blank to use server env" autocomplete="off" />
+            </label>
+            <label class="field">
+              <span>Model</span>
+              <input id="openai-model" placeholder="gpt-4.1-mini" autocomplete="off" />
+            </label>
+          </form>
+          <div class="chat-log" id="chat-log"></div>
+          <form class="chat-form" id="chat-form">
+            <textarea id="chat-input" rows="3" placeholder="Ask the agent to inspect data or propose an action"></textarea>
+            <button type="submit">Send</button>
+          </form>
+        </aside>
+        <main class="main">
+          <section class="panel" id="view-panel">
+            <div class="panel-head">
+              <h2>Authorized view</h2>
+              <p id="view-meta"></p>
+            </div>
+            <div id="resources"></div>
+            <div id="actions"></div>
+          </section>
+          <section class="panel receipts">
+            <div class="panel-head">
+              <h2>Receipts</h2>
+              <p>Every read and execute is recorded. Forged actions still go through CUP.</p>
+            </div>
+            <div id="receipts" class="receipt-list"></div>
+          </section>
+        </main>
+      </div>
+    </div>
+    <script src="app.js" type="module"></script>
+  </body>
+</html>

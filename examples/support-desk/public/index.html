@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Clearline</title>
+    <link rel="stylesheet" href="/app.css" />
+  </head>
+  <body>
+    <header class="top">
+      <div class="brand">
+        <span class="logo">CL</span>
+        <div>
+          <strong>Clearline</strong>
+          <p>Service desk</p>
+        </div>
+      </div>
+      <nav>
+        <a href="/explorer.html">Data explorer</a>
+      </nav>
+      <label class="who">
+        Agent
+        <select id="principal"></select>
+      </label>
+    </header>
+    <div class="split">
+      <section class="queue">
+        <div class="queue-head">
+          <h1>Queue</h1>
+          <p id="queue-meta"></p>
+        </div>
+        <div id="list"></div>
+      </section>
+      <section class="detail" id="detail">
+        <div class="detail-body">
+          <p class="empty">Pick a ticket from the queue to open the thread.</p>
+        </div>
+      </section>
+    </div>
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

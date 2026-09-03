@@ -1,0 +1,112 @@
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Source+Sans+3:wght@400;500;600&display=swap");
+:root {
+  --bg: #f3eee6;
+  --ink: #1c1814;
+  --muted: #6f675e;
+  --line: #e0d8cc;
+  --card: #fffcf7;
+  --accent: #b44a1f;
+  --rail: #1f1b18;
+  --ok: #2f6b3c;
+  --font: "Source Sans 3", ui-sans-serif, system-ui, sans-serif;
+  --display: "Fraunces", "Times New Roman", serif;
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px; --s7: 48px;
+  --shadow: 0 1px 2px rgba(28, 24, 20, 0.04), 0 12px 32px rgba(28, 24, 20, 0.08);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--ink); font: 16px/1.5 var(--font); }
+.shell { display: grid; grid-template-columns: 248px minmax(0, 1fr); min-height: 100vh; }
+.rail { position: relative; z-index: 25; background: var(--rail); color: #f6f0e6; padding: 32px 20px; display: flex; flex-direction: column; gap: 8px; }
+.rail nav { display: grid; gap: 4px; }
+.nav.foot { margin-top: auto; color: #c9bfb3; font-size: 13px; }
+.mark { font: 600 26px/1 var(--display); margin: 0 0 28px; letter-spacing: -0.03em; }
+.nav {
+  display: block; width: 100%; text-align: left; background: transparent; border: 0; color: inherit;
+  padding: 12px 14px; border-radius: 10px; font: 500 15px var(--font); cursor: pointer; text-decoration: none;
+}
+.nav:hover { background: rgba(255,255,255,0.06); }
+.nav.on { background: #3a322c; }
+.nav:focus-visible { outline: 2px solid #e8b89a; outline-offset: 2px; }
+.main { min-width: 0; }
+.bar {
+  display: flex; justify-content: space-between; gap: var(--s6); align-items: flex-end;
+  padding: 28px 40px 8px;
+}
+.quiet { margin: 0; color: var(--muted); font-size: 13px; letter-spacing: 0.02em; }
+h1 { margin: 8px 0 0; font: 600 34px/1.12 var(--display); letter-spacing: -0.03em; }
+.who { display: grid; gap: 6px; font-size: 12px; color: var(--muted); }
+select, input, textarea {
+  border: 1px solid var(--line); background: var(--card); border-radius: 10px;
+  padding: 10px 12px; font: 15px var(--font); color: var(--ink);
+}
+select:focus-visible, input:focus-visible, textarea:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 50%, white); outline-offset: 2px;
+}
+.board {
+  display: grid; grid-template-columns: repeat(3, minmax(200px, 1fr));
+  gap: 20px; padding: 20px 40px 24px; align-items: start;
+}
+.closed-recap {
+  margin: 0 40px 48px; color: var(--muted); font-size: 14px;
+}
+.accounts { padding: 12px 40px 56px; display: grid; gap: 16px; }
+.board[hidden], .accounts[hidden], .closed-recap[hidden] { display: none; }
+.account-tools { display: flex; gap: 12px; align-items: center; }
+.account-tools input { min-width: min(320px, 100%); }
+.account-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+.account {
+  background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 20px;
+  display: grid; gap: 10px; text-align: left;
+}
+.account h2 { margin: 0; font: 600 20px/1.2 var(--display); }
+.account-people { display: grid; gap: 8px; }
+.person {
+  width: 100%; text-align: left; border: 0; background: var(--bg); border-radius: 10px;
+  padding: 10px 12px; cursor: pointer; font: inherit; color: inherit; display: grid; gap: 2px;
+}
+.person:hover { background: #f3ebe0; }
+.person strong { font-size: 14px; }
+.person span { color: var(--muted); font-size: 13px; }
+.col {
+  background: color-mix(in srgb, white 42%, var(--bg)); border: 1px solid var(--line);
+  border-radius: 16px; padding: 16px;
+}
+.col h2 { margin: 0 0 14px; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.col-empty { color: var(--muted); font-size: 13px; padding: 12px 4px 8px; }
+.card {
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px;
+  margin: 0 0 12px; cursor: pointer; text-align: left; width: 100%; font: inherit; color: inherit;
+  display: grid; gap: 4px; box-shadow: 0 1px 0 rgba(28,24,20,0.04);
+}
+.card:hover { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); transform: translateY(-1px); }
+.card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.card strong { display: block; font-size: 15px; }
+.card span { color: var(--muted); font-size: 13px; }
+.table-wrap { background: var(--card); border: 1px solid var(--line); border-radius: 16px; overflow: auto; }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+th { font-size: 12px; color: var(--muted); font-weight: 600; letter-spacing: 0.04em; }
+tr:last-child td { border-bottom: 0; }
+tr[style*="cursor"] { cursor: pointer; }
+tr:hover td { background: #faf6ef; }
+.scrim { position: fixed; inset: 0; background: rgba(28, 24, 20, 0.32); z-index: 15; }
+.drawer {
+  position: fixed; top: 0; right: 0; width: min(440px, 100vw); height: 100vh; z-index: 20;
+  border-left: 1px solid var(--line); background: var(--card); padding: 28px 28px 48px;
+  overflow: auto; box-shadow: var(--shadow);
+}
+.drawer-head { display: flex; justify-content: space-between; align-items: start; gap: 16px; margin-bottom: 8px; }
+.drawer h2 { font: 600 28px/1.15 var(--display); margin: 0; }
+.meta { color: var(--muted); margin: 0 0 20px; }
+.notes { display: grid; gap: 12px; margin: 20px 0; }
+.note { background: var(--bg); border-radius: 12px; padding: 14px 16px; display: grid; gap: 6px; }
+button.primary, button.ghost {
+  height: 40px; border-radius: 10px; padding: 0 16px; font: 600 14px var(--font); cursor: pointer;
+}
+button.primary { background: var(--accent); color: #fffaf3; border: 0; }
+button.ghost { background: transparent; border: 1px solid var(--line); color: var(--ink); }
+button.primary:hover { filter: brightness(1.05); }
+.stack { display: grid; gap: 12px; margin-top: 16px; }
+.flash { color: var(--ok); font-size: 14px; margin: 12px 0 0; }
+.warn { color: var(--accent); font-size: 14px; margin: 12px 0 0; }
+@media (max-width: 1100px) { .board { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
