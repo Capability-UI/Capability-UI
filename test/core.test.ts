@@ -228,3 +228,20 @@ test('rejects required-idempotency actions without a key', async () => {
   assert.equal(receipt.status, 'denied');
   assert.equal(receipt.decision.reasonCode, 'IDEMPOTENCY_KEY_REQUIRED');
 });
+
+test('MCP exposes prompts and session metadata', async () => {
+  const cup = new CapabilityUI();
+  const server = createMCPServer({ name: 'test', cup, prompts: [{ name: 'brief', description: 'Make a brief', get: args => ({ args }) }] });
+  const initialized = await server.handle({ jsonrpc: '2.0', id: 1, method: 'initialize' });
+  assert.equal((initialized.result as { _cup: { session: { transport: string } } })._cup.session.transport, 'streamable_http');
+  const listed = await server.handle({ jsonrpc: '2.0', id: 2, method: 'prompts/list' });
+  assert.equal((listed.result as { prompts: unknown[] }).prompts.length, 1);
+  const prompt = await server.handle({ jsonrpc: '2.0', id: 3, method: 'prompts/get', params: { name: 'brief', arguments: { topic: 'CUP' } } });
+  assert.deepEqual(prompt.result, { args: { topic: 'CUP' } });
+});
+
+test('uses injected clock and nonce providers', async () => {
+  const cup = new CapabilityUI({ clock: () => new Date('2030-01-01T00:00:00Z'), nonce: () => 'fixed-id' });
+  const decision = await cup.authorize({ subject: john, operation: 'read', resource: { id: 'missing' }, context: {} });
+  assert.equal(decision.requestId, 'fixed-id');
+});

@@ -20,6 +20,8 @@ export type ScopeExpression = Scope;
 export type FieldFilter = FieldPermission[];
 export type Obligation = { type: 'redact'; fields: string[] } | { type: 'require_confirmation'; mode: ConfirmationMode } | { type: 'preview_changes' } | { type: 'write_receipt' } | { type: 'human_review' };
 export type ConfirmationMode = 'none' | 'preview' | 'explicit' | 'human_review';
+export type Clock = () => Date;
+export type NonceProvider = () => string;
 
 export interface Resource {
   id: string; type: ResourceType; version: string;
@@ -121,11 +123,15 @@ export class PolicyStore {
 
 export class CapabilityUI {
   readonly policy = new PolicyStore(); readonly receipts: ReceiptSink;
+  private readonly clock: Clock; private readonly nonce: NonceProvider;
   private readonly resources = new Map<string, Resource>(); private readonly capabilities = new Map<string, Capability>();
   private readonly delegations = new Map<string, DelegationGrant>(); private readonly prepared = new Map<string, Decision>();
   private readonly listeners = new Map<string, Set<(event: ResourceEvent) => void>>();
   private readonly actionTokens = new Map<string, { capability: string; subjectId: string; policyVersion: string; expiresAt: number }>();
-  constructor(receipts: ReceiptSink = new MemoryReceiptSink()) { this.receipts = receipts; }
+  constructor(options: ReceiptSink | { receipts?: ReceiptSink; clock?: Clock; nonce?: NonceProvider } = {}) {
+    if ('append' in options) { this.receipts = options; this.clock = () => new Date(); this.nonce = randomUUID; }
+    else { this.receipts = options.receipts ?? new MemoryReceiptSink(); this.clock = options.clock ?? (() => new Date()); this.nonce = options.nonce ?? randomUUID; }
+  }
   register(resource: Resource | Capability): void { this.resources.set(resource.id, resource); if (resource.type === 'capability' && 'handler' in resource) this.capabilities.set(resource.id, resource); }
   registerAdapter(adapter: ResourceAdapter | ExecutionAdapter): void {
     const id = 'resourceId' in adapter ? adapter.resourceId : adapter.capabilityId;
@@ -134,7 +140,7 @@ export class CapabilityUI {
     else if ('invoke' in adapter && resource.type === 'capability' && 'handler' in resource) resource.handler = adapter.invoke.bind(adapter);
   }
   async authorize(request: AuthorizationRequest): Promise<Decision> {
-    const requestId = request.requestId ?? randomUUID();
+    const requestId = request.requestId ?? this.nonce();
     const validOperations: Operation[] = ['discover', 'inspect', 'read', 'create', 'update', 'delete', 'execute', 'share', 'delegate'];
     if (!validOperations.includes(request.operation)) return { requestId, effect: 'deny', reasonCode: 'UNKNOWN_OPERATION', matchedPolicies: [], obligations: [], policyVersion: this.policy.version() };
     if (!request.subject.authenticated && request.operation !== 'discover') return { requestId, effect: 'deny', reasonCode: 'SUBJECT_NOT_AUTHENTICATED', matchedPolicies: [], obligations: [], policyVersion: this.policy.version() };
@@ -157,8 +163,8 @@ export class CapabilityUI {
       const read = await this.authorize({ subject: request.subject, operation: 'read', resource, purpose: request.context.purpose, context: request.context }); if (read.effect === 'allow') { visibility = 'readable'; schema = resource.schema; }
       resources.push({ ref: { id: resource.id, version: resource.version }, visibility, schema, capabilities: [] });
     }
-    for (const capability of this.capabilities.values()) { const d = await this.authorize({ subject: request.subject, operation: 'execute', resource: capability, purpose: request.context.purpose, context: request.context }); if (d.effect === 'allow') { const actionToken = randomUUID(); this.actionTokens.set(actionToken, { capability: capability.id, subjectId: request.subject.id, policyVersion: d.policyVersion, expiresAt: Date.now() + 5 * 60_000 }); capabilities.push({ id: capability.id, operation: capability.operation, inputSchema: capability.inputSchema, outputSchema: capability.outputSchema, risk: capability.risk, sideEffects: capability.sideEffects, confirmation: capability.confirmation, obligations: d.obligations, actionToken }); } }
-    return { viewId: randomUUID(), subjectId: request.subject.id, goal: request.goal, generatedAt: new Date().toISOString(), policyVersion: this.policy.version(), resources, capabilities, globalObligations: [] };
+    for (const capability of this.capabilities.values()) { const d = await this.authorize({ subject: request.subject, operation: 'execute', resource: capability, purpose: request.context.purpose, context: request.context }); if (d.effect === 'allow') { const actionToken = this.nonce(); this.actionTokens.set(actionToken, { capability: capability.id, subjectId: request.subject.id, policyVersion: d.policyVersion, expiresAt: this.clock().getTime() + 5 * 60_000 }); capabilities.push({ id: capability.id, operation: capability.operation, inputSchema: capability.inputSchema, outputSchema: capability.outputSchema, risk: capability.risk, sideEffects: capability.sideEffects, confirmation: capability.confirmation, reversibility: capability.reversibility, obligations: d.obligations, actionToken }); } }
+    return { viewId: this.nonce(), subjectId: request.subject.id, goal: request.goal, purpose: request.context.purpose, generatedAt: this.clock().toISOString(), policyVersion: this.policy.version(), resources, capabilities, globalObligations: [] };
   }
   async read(request: { subject: Subject; resource: string; query?: Record<string, unknown>; fields?: string[]; scope?: Scope; purpose?: string; context: RequestContext }): Promise<{ items: unknown[]; receiptId: string }> {
     const resource = this.resources.get(request.resource); if (!resource?.read) throw new Error('CUP_RESOURCE_NOT_READABLE');
@@ -177,7 +183,7 @@ export class CapabilityUI {
     const capability = this.capabilities.get(request.capability); const inputHash = hash(request.input);
     if (!capability) return this.record({ status: 'denied', actor: request.subject, capability: request.capability, inputHash, decision: await this.authorize({ ...request, operation: 'execute', resource: { id: request.capability } }) });
     if (capability.idempotency === 'required' && !request.idempotencyKey) return this.record({ status: 'denied', actor: request.subject, capability: capability.id, inputHash, decision: this.denial(request, 'IDEMPOTENCY_KEY_REQUIRED') });
-    if (request.actionToken) { const token = this.actionTokens.get(request.actionToken); if (!token || token.capability !== capability.id || token.subjectId !== request.subject.id || token.policyVersion !== this.policy.version() || token.expiresAt <= Date.now()) return this.record({ status: 'denied', actor: request.subject, capability: capability.id, inputHash, decision: this.denial(request, 'INVALID_ACTION_TOKEN') }); }
+    if (request.actionToken) { const token = this.actionTokens.get(request.actionToken); if (!token || token.capability !== capability.id || token.subjectId !== request.subject.id || token.policyVersion !== this.policy.version() || token.expiresAt <= this.clock().getTime()) return this.record({ status: 'denied', actor: request.subject, capability: capability.id, inputHash, decision: this.denial(request, 'INVALID_ACTION_TOKEN') }); }
     const delegated = !!request.delegation;
     if (delegated && !this.validDelegation(request.delegation!, request)) return this.record({ status: 'denied', actor: request.subject, capability: capability.id, inputHash, decision: this.denial(request, 'INVALID_DELEGATION') });
     if (request.requestId && this.prepared.has(request.requestId) && this.prepared.get(request.requestId)?.policyVersion !== this.policy.version()) return this.record({ status: 'denied', actor: request.subject, capability: capability.id, inputHash, decision: this.denial(request, 'PREPARED_DECISION_STALE') });
@@ -192,7 +198,7 @@ export class CapabilityUI {
   }
   async delegate(request: { from: Subject; to: Subject; capability: string; operations: Operation[]; scope?: Scope; purpose?: string; expiresInMs: number }): Promise<DelegationGrant> {
     const resource = this.resources.get(request.capability); if (!resource) throw new Error('CUP_RESOURCE_NOT_FOUND'); const d = await this.authorize({ subject: request.from, operation: 'delegate', resource, purpose: request.purpose, scope: request.scope, context: { purpose: request.purpose } }); if (d.effect !== 'allow') throw new Error(`CUP_NOT_AUTHORIZED:${d.reasonCode}`);
-    const grant: DelegationGrant = { id: randomUUID(), from: request.from, to: request.to, capability: request.capability, operations: request.operations, scope: request.scope, purpose: request.purpose, expiresAt: new Date(Date.now() + request.expiresInMs).toISOString() }; this.delegations.set(grant.id, grant); return grant;
+    const grant: DelegationGrant = { id: this.nonce(), from: request.from, to: request.to, capability: request.capability, operations: request.operations, scope: request.scope, purpose: request.purpose, expiresAt: new Date(this.clock().getTime() + request.expiresInMs).toISOString() }; this.delegations.set(grant.id, grant); return grant;
   }
   async subscribe(request: { subject: Subject; resource: string; events: string[]; context: RequestContext }): Promise<Subscription> {
     const resource = this.resources.get(request.resource); if (!resource) throw new Error('CUP_RESOURCE_NOT_FOUND');
@@ -206,9 +212,9 @@ export class CapabilityUI {
     };
   }
   publish(event: ResourceEvent): void { for (const listener of this.listeners.get(event.resource.id) ?? []) listener(event); }
-  private validDelegation(grant: DelegationGrant, request: ExecutionRequest): boolean { return this.delegations.get(grant.id) === grant && grant.to.id === request.subject.id && grant.capability === request.capability && grant.operations.includes('execute') && new Date(grant.expiresAt) > new Date() && (!grant.purpose || grant.purpose === request.purpose) && matchesScope(grant.scope, request.scope); }
-  private denial(request: ExecutionRequest, reasonCode: string): Decision { return { requestId: request.requestId ?? randomUUID(), effect: 'deny', reasonCode, matchedPolicies: [], obligations: [], policyVersion: this.policy.version() }; }
-  private async record(input: Omit<Receipt, 'id' | 'createdAt'>): Promise<Receipt> { const receipt = { ...input, id: randomUUID(), createdAt: new Date().toISOString() }; await this.receipts.append(receipt); return receipt; }
+  private validDelegation(grant: DelegationGrant, request: ExecutionRequest): boolean { return this.delegations.get(grant.id) === grant && grant.to.id === request.subject.id && grant.capability === request.capability && grant.operations.includes('execute') && new Date(grant.expiresAt) > this.clock() && (!grant.purpose || grant.purpose === request.purpose) && matchesScope(grant.scope, request.scope); }
+  private denial(request: ExecutionRequest, reasonCode: string): Decision { return { requestId: request.requestId ?? this.nonce(), effect: 'deny', reasonCode, matchedPolicies: [], obligations: [], policyVersion: this.policy.version() }; }
+  private async record(input: Omit<Receipt, 'id' | 'createdAt'>): Promise<Receipt> { const receipt = { ...input, id: this.nonce(), createdAt: this.clock().toISOString() }; await this.receipts.append(receipt); return receipt; }
 }
 
 export interface ResourceEvent { resource: ResourceRef; type: string; data?: unknown; }
@@ -217,8 +223,8 @@ export interface IdentityAdapter { resolve(request: unknown): Promise<Subject> |
 export interface PolicyAdapter { authorize(request: AuthorizationRequest): Promise<Decision> | Decision; policyVersion(): string; }
 export interface CapabilityAdapter { capabilityId: string; invoke(input: unknown, context: ExecutionContext): Promise<unknown>; }
 export interface RendererAdapter<T> { render(view: AuthorizedView, target: T): unknown; }
-export interface CapabilityUIOptions { registry?: Array<Resource | Capability>; receipts?: ReceiptSink; }
-export function createCapabilityUI(options: CapabilityUIOptions = {}): CapabilityUI { const cup = new CapabilityUI(options.receipts); for (const item of options.registry ?? []) cup.register(item); return cup; }
+export interface CapabilityUIOptions { registry?: Array<Resource | Capability>; receipts?: ReceiptSink; clock?: Clock; nonce?: NonceProvider; }
+export function createCapabilityUI(options: CapabilityUIOptions = {}): CapabilityUI { const cup = new CapabilityUI(options); for (const item of options.registry ?? []) cup.register(item); return cup; }
 export function verifyActionToken(view: AuthorizedView, token: string): AuthorizedCapability | undefined { return view.capabilities.find(capability => capability.actionToken === token); }
 export function canonicalInputHash(input: unknown): string { return hash(input); }
 export function subject(id: string, attributes: Record<string, unknown> = {}, authenticated = true): Subject { return { id, type: id.startsWith('agent:') ? 'agent' : 'user', authenticated, attributes }; }
@@ -252,16 +258,22 @@ export const requireHumanReview = (): Obligation => ({ type: 'human_review' });
 
 export interface MCPRequest { jsonrpc: '2.0'; id?: string | number; method: string; params?: Record<string, unknown>; }
 export interface MCPResponse { jsonrpc: '2.0'; id?: string | number; result?: unknown; error?: { code: number; message: string }; }
-export function createMCPServer(options: { cup: CapabilityUI; name: string; authenticate?: (request: MCPRequest) => Promise<Subject> | Subject }) {
+export interface MCPPrompt { name: string; description?: string; arguments?: Array<{ name: string; required?: boolean }>; get: (args: Record<string, unknown>, subject: Subject) => Promise<unknown> | unknown; }
+export interface MCPSession { id: string; subject: Subject; purpose?: string; transport: 'stdio' | 'streamable_http'; policyVersion: string; createdAt: string; expiresAt: string; }
+export function createMCPServer(options: { cup: CapabilityUI; name: string; authenticate?: (request: MCPRequest) => Promise<Subject> | Subject; prompts?: MCPPrompt[] }) {
   const { cup } = options;
   return { async handle(request: MCPRequest): Promise<MCPResponse> {
     try {
       const params = request.params ?? {}; const subjectValue = options.authenticate ? await options.authenticate(request) : subject('service:mcp'); const context = (params.context as RequestContext | undefined) ?? {};
-      if (request.method === 'initialize') return { jsonrpc: '2.0', id: request.id, result: { protocolVersion: '2025-06-18', serverInfo: { name: options.name, version: '0.1.0' }, capabilities: { resources: { subscribe: true }, tools: {}, prompts: {} } } };
+      const session: MCPSession = { id: randomUUID(), subject: subjectValue, purpose: context.purpose, transport: context.channel === 'stdio' ? 'stdio' : 'streamable_http', policyVersion: cup.policy.version(), createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 24 * 60 * 60_000).toISOString() };
+      if (request.method === 'initialize') return { jsonrpc: '2.0', id: request.id, result: { protocolVersion: '2025-06-18', serverInfo: { name: options.name, version: '0.2.0' }, capabilities: { resources: { subscribe: true }, tools: {}, prompts: { listChanged: false } }, _cup: { session } } };
       if (request.method === 'resources/list') return { jsonrpc: '2.0', id: request.id, result: { resources: await cup.discover({ subject: subjectValue, purpose: context.purpose, context }) } };
       if (request.method === 'resources/read') { const uri = String(params.uri ?? ''); const id = uri.replace(/^cup:\/\//, ''); return { jsonrpc: '2.0', id: request.id, result: await cup.read({ subject: subjectValue, resource: id, purpose: context.purpose, context }) }; }
       if (request.method === 'tools/list') { const view = await cup.project({ subject: subjectValue, goal: String(params.goal ?? ''), context }); return { jsonrpc: '2.0', id: request.id, result: { tools: view.capabilities.map(c => ({ name: c.id, description: `${c.id} (${c.risk} risk)`, inputSchema: c.inputSchema, _cup: c })) } }; }
       if (request.method === 'tools/call') { const name = String(params.name ?? ''); const args = params.arguments ?? {}; const receipt = await cup.execute({ subject: subjectValue, capability: name, input: args, purpose: context.purpose, context }); return { jsonrpc: '2.0', id: request.id, result: { isError: receipt.status !== 'succeeded', content: [{ type: 'text', text: JSON.stringify(receipt) }] } }; }
+      if (request.method === 'prompts/list') return { jsonrpc: '2.0', id: request.id, result: { prompts: (options.prompts ?? []).map(prompt => ({ name: prompt.name, description: prompt.description, arguments: prompt.arguments })) } };
+      if (request.method === 'prompts/get') { const prompt = (options.prompts ?? []).find(item => item.name === String(params.name ?? '')); if (!prompt) return { jsonrpc: '2.0', id: request.id, error: { code: -32602, message: 'Prompt not found' } }; return { jsonrpc: '2.0', id: request.id, result: await prompt.get((params.arguments as Record<string, unknown>) ?? {}, subjectValue) }; }
+      if (request.method === 'resources/subscribe') { const uri = String(params.uri ?? ''); const subscription = await cup.subscribe({ subject: subjectValue, resource: uri.replace(/^cup:\/\//, ''), events: (params.events as string[]) ?? ['updated'], context }); return { jsonrpc: '2.0', id: request.id, result: { subscribed: true, close: typeof subscription.close === 'function' } }; }
       return { jsonrpc: '2.0', id: request.id, error: { code: -32601, message: 'Method not found' } };
     } catch (error) { return { jsonrpc: '2.0', id: request.id, error: { code: -32000, message: error instanceof Error ? error.message : 'Request failed' } }; }
   } };
