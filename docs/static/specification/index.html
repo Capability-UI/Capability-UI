@@ -1,0 +1,845 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Capability UI Protocol v0.1: a full library design specification for permission-aware generative interfaces.">
+<title>Capability UI Protocol — Full Library Design Spec</title>
+<style>
+:root{--bg:#f4f7f9;--surface:#fff;--surface2:#e9eff3;--ink:#17232c;--muted:#53636d;--line:#c6d2d9;--accent:#075985;--green:#166534;--orange:#9a3412;--red:#991b1b;--code:#101920;--shadow:0 7px 22px rgba(23,35,44,.07)}
+[data-theme=dark]{--bg:#10181e;--surface:#17232b;--surface2:#22323d;--ink:#edf5f8;--muted:#b8c6cd;--line:#40515c;--accent:#7dd3fc;--green:#86efac;--orange:#fdba74;--red:#fca5a5;--code:#0b1116;--shadow:0 7px 22px rgba(0,0,0,.24)}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--ink);font:18px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif}h1,h2,h3,h4{line-height:1.17;letter-spacing:-.025em}h1{font-size:clamp(2.4rem,6vw,5.4rem);max-width:1000px;margin:.25rem 0 1rem}h2{font-size:clamp(1.9rem,4vw,3rem);margin:0 0 1rem}h3{font-size:clamp(1.3rem,2.5vw,1.7rem);margin:0 0 .65rem}h4{font-size:1.1rem;margin:1.4rem 0 .4rem}p{max-width:80ch}a{color:var(--accent);font-weight:750}.wrap{width:min(1160px,calc(100% - 32px));margin:auto}.top{position:sticky;top:0;z-index:10;background:color-mix(in srgb,var(--surface) 95%,transparent);border-bottom:1px solid var(--line)}.topin{min-height:64px;display:flex;align-items:center;justify-content:space-between;gap:16px}.brand{font-weight:850}.actions{display:flex;gap:9px;align-items:center}.btn{min-height:44px;padding:8px 14px;border:1px solid var(--line);border-radius:7px;background:var(--surface);color:var(--ink);font:inherit;font-size:.9rem;cursor:pointer;text-decoration:none}.btn:hover,.btn:focus-visible{border-color:var(--accent);outline:3px solid color-mix(in srgb,var(--accent) 25%,transparent)}.hero{padding:clamp(58px,10vw,130px) 0 82px;background:linear-gradient(180deg,var(--surface),var(--bg));border-bottom:1px solid var(--line)}.eyebrow,.tag{color:var(--accent);font-weight:850;text-transform:uppercase;letter-spacing:.1em;font-size:.78rem}.lede{font-size:clamp(1.1rem,2.2vw,1.45rem);color:var(--muted);max-width:900px}.status{display:inline-flex;gap:8px;align-items:center;border:1px solid var(--line);padding:5px 10px;border-radius:99px;font-size:.82rem;color:var(--muted)}.dot{width:9px;height:9px;background:var(--green);border-radius:50%}.section{padding:84px 0;border-bottom:1px solid var(--line)}.section h2{margin-bottom:16px}.section h3{margin-top:38px}.intro{color:var(--muted);max-width:820px;margin:0 0 30px}.card{margin-bottom:0}.example-card{margin:0 0 18px;background:var(--surface2);box-shadow:none}.code{margin:0 0 30px}.grid,.grid2{gap:24px}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:23px;box-shadow:var(--shadow)}.card p:last-child{margin-bottom:0}.code{overflow:auto;background:var(--code);color:#e8f4f7;border-radius:8px;padding:20px;font:15.5px/1.58 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre}.code strong{color:#7dd3fc}.note{padding:18px 22px;border-left:5px solid var(--orange);background:var(--surface);border-radius:7px}.flow{display:grid;grid-template-columns:repeat(11,1fr);align-items:stretch;gap:6px;margin-top:26px}.flowitem{display:flex;align-items:center;justify-content:center;min-height:82px;padding:12px;text-align:center;background:var(--surface);border:1px solid var(--line);border-radius:8px;font-weight:750}.arrow{display:flex;align-items:center;justify-content:center;color:var(--accent);font-weight:900;font-size:1.3rem}.tablewrap{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:8px}table{width:100%;min-width:760px;border-collapse:collapse}th,td{text-align:left;vertical-align:top;padding:13px 15px;border-bottom:1px solid var(--line)}th{background:var(--surface2);font-size:.8rem;text-transform:uppercase;letter-spacing:.06em}tr:last-child td{border-bottom:0}.yes{color:var(--green);font-weight:800}.warn{color:var(--orange);font-weight:800}.no{color:var(--red);font-weight:800}.toc{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:25px}.toc a{padding:10px 12px;border:1px solid var(--line);border-radius:6px;text-decoration:none;background:var(--surface);font-size:.92rem}.badge{display:inline-block;padding:2px 7px;border-radius:4px;background:var(--surface2);font:700 .78rem ui-monospace,monospace;color:var(--accent)}.footer{padding:42px 0 70px;color:var(--muted);font-size:.92rem}@media(max-width:820px){.grid,.grid2{grid-template-columns:1fr}.toc{grid-template-columns:1fr 1fr}.flow{grid-template-columns:1fr}.arrow{min-height:20px;transform:rotate(90deg)}.topin{align-items:flex-start;padding:10px 0}.brand{max-width:180px;line-height:1.2}.section{padding:54px 0}.wrap{width:min(100% - 24px,1160px)}}@media(max-width:470px){.toc{grid-template-columns:1fr}}@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+.blog{max-width:900px}.blog .kicker{margin-bottom:10px}.blog h2{max-width:900px}.blog h3{margin-top:40px}.blog p{max-width:78ch}.blog .lead{font-size:1.22rem;color:var(--muted)}.blog .pull{margin:30px 0;padding:22px 26px;border-left:4px solid var(--accent);background:var(--surface2);font-size:1.2rem;font-weight:700}.blog .meta{color:var(--muted);font-size:.9rem;margin:0 0 30px}.blog ul{max-width:76ch}.blog li{margin-bottom:8px}.blog a{font-weight:700}@media(max-width:700px){.wrap{width:min(100% - 24px,1160px)}.section{padding:58px 0}.hero{padding:58px 0 56px}.topin{align-items:flex-start;padding:10px 0}.brand{font-size:.9rem}.actions{gap:5px;flex-wrap:wrap;justify-content:flex-end}.btn{padding:7px 10px}.blog .pull{padding:18px 20px;font-size:1.08rem}} </style>
+</head>
+<body>
+<header class="top"><div class="wrap topin"><div class="brand">Capability UI Protocol / Full Spec · v0.2</div><div class="actions"><a class="btn" href="#api">API</a><a class="btn" href="#examples">Examples</a><a class="btn" href="#future-blog">Blog</a><button class="btn" id="theme" type="button">Dark mode</button></div></div></header>
+<main>
+<section class="hero"><div class="wrap"><div class="eyebrow">Capability UI Protocol · CUP-001 · version 0.1</div><h1>Permission-aware software with generated interfaces.</h1><p class="lede">This specification defines a library for exposing data and tools as typed capabilities, resolving policy into authorized views, allowing agents from any existing runtime to compose presentation, and enforcing the final action at the execution boundary.</p><p><strong>New in v0.2:</strong> standalone, commented examples for reading data, calling tools, bounded agents, delegated research teams, MCP servers, and remote MCP clients.</p><p><span class="status"><span class="dot"></span>Draft standard · reference implementation: TypeScript</span></p><div class="toc"><a href="#goals">1. Goals</a><a href="#concepts">2. Concepts</a><a href="#agent-neutrality">2.1 Agent neutrality</a><a href="#model">3. Data model</a><a href="#policy">4. Policy</a><a href="#evaluation">5. Evaluation</a><a href="#api">6. API</a><a href="#projection">7. Projection</a><a href="#execution">8. Execution</a><a href="#security">9. Security</a><a href="#conformance">10. Conformance</a><a href="#adapters">11. Adapters</a><a href="#roadmap">12. Roadmap</a><a href="#mcp">13. MCP server profile</a><a href="#examples">14. Examples</a></div></div></section>
+<section class="section" id="goals"><div class="wrap"><h2>1. Goals and non-goals</h2><p class="intro">CUP is the authorization and presentation contract between applications and agents. It makes available actions explicit without prescribing one visual language.</p><div class="grid2"><article class="card"><h3>Goals</h3><ul><li>Represent data and tools with stable, typed contracts.</li><li>Distinguish discovery, inspection, reading, mutation, execution, sharing, and delegation.</li><li>Generate a safe capability view for an agent or renderer.</li><li>Express scope, purpose, expiration, approval, and risk.</li><li>Enforce the exact proposed action immediately before side effects.</li><li>Produce receipts that explain decisions and results.</li><li>Support web, mobile, voice, native, and future renderers.</li></ul></article><article class="card"><h3>Non-goals</h3><ul><li>Replacing authentication, identity proofing, or session management.</li><li>Choosing an agent model, planner, prompt, or vendor.</li><li>Replacing a database or defining data ownership.</li><li>Defining a universal visual component library.</li><li>Assuming that UI visibility is authorization.</li><li>Allowing an old authorization result to survive a policy change.</li></ul></article></div></div></section>
+<section class="section" id="concepts"><div class="wrap"><h2>2. Core concepts</h2><div class="grid"><article class="card"><div class="tag">Resource</div><h3>Something that exists</h3><p>A data object, collection, file, tool, workflow, view, model, agent, or identity.</p></article><article class="card"><div class="tag">Principal</div><h3>Something that acts</h3><p>A person, agent, service, group, or organization. A delegated agent remains distinct from its delegator.</p></article><article class="card"><div class="tag">Capability</div><h3>A typed possible action</h3><p>A named operation with inputs, outputs, side effects, risk, and required policy.</p></article><article class="card"><div class="tag">Policy</div><h3>A rule about access</h3><p>An allow or deny rule connecting a principal, operation, resource, scope, and conditions.</p></article><article class="card"><div class="tag">Projection</div><h3>A safe authorized view</h3><p>The subset of resources, fields, and actions that may be disclosed to a consumer.</p></article><article class="card"><div class="tag">Receipt</div><h3>Evidence of a decision</h3><p>An append-only record of authorization, confirmation, execution, and outcome.</p></article></div><div class="note" style="margin-top:22px"><strong>Normative rule:</strong> a generated interface is a presentation of an authorized projection. It is never the source of authorization.</div></div></section>
+<section class="section" id="agent-neutrality"><div class="wrap"><h2>2.1 Agent neutrality</h2><p class="intro">CUP does not create, schedule, train, host, or manage agents. An agent is a resource and a principal can receive capabilities to use, inspect, invoke, or delegate to that agent.</p><div class="grid2"><div class="card"><h3>Agent as resource</h3><p>An existing agent runtime is registered with metadata such as identity, owner, model provider, supported tasks, input schema, output schema, cost, risk, availability, and endpoint. CUP controls who may discover or invoke it.</p></div><div class="card"><h3>Agent as principal</h3><p>When an agent acts, it has its own subject identity. Policies can grant it access to data and tools, constrain delegation, and bind actions to a purpose and expiration.</p></div></div><div class="code">// CUP defines the contract around an existing runtime.
+// The runtime itself is supplied by the host application.
+interface ExternalAgentResource extends Resource {
+  type: 'agent';
+  endpoint: string;
+  inputSchema: JsonSchema;
+  outputSchema: JsonSchema;
+  supportedTasks: string[];
+}
+
+interface AgentRuntimeAdapter {
+  invoke(agent: ExternalAgentResource, input: unknown,
+    context: ExecutionContext): Promise&lt;unknown&gt;;
+}
+
+// CUP authorizes use; it does not implement invoke(), planning, memory,
+// model selection, tool loops, scheduling, or agent lifecycle.
+const result = await cup.execute({
+  subject: john,
+  capability: 'agent.research.invoke',
+  input: { task: 'summarize these public sources' },
+  context: { purpose: 'market_scan' }
+});</div><div class="note" style="margin-top:22px"><strong>Boundary:</strong> LangGraph, AutoGen, CrewAI, OpenAI Agents SDK, a custom loop, or any future runtime can supply the agent. CUP only defines the resource contract, authorization, projection, and guarded access around it.</div></div></section>
+<section class="section" id="model"><div class="wrap"><h2>3. Data model</h2><p class="intro">All identifiers are namespaced strings. Resource schemas use JSON Schema 2020-12 or a compatible typed schema. Unknown fields are rejected by default.</p><div class="code">interface Subject {
+  id: string;                 // user:john, agent:personal
+  type: 'user' | 'agent' | 'service' | 'group';
+  authenticated: boolean;
+  attributes: Record&lt;string, unknown&gt;;
+}
+
+interface Resource {
+  id: string;                 // calendar:john
+  type: 'data' | 'capability' | 'workflow' | 'view' | 'agent';
+  version: string;             // changes when schema or semantics change
+  schema: JsonSchema;
+  sensitivity: 'public' | 'personal' | 'confidential' | 'restricted';
+  owner?: string;
+  metadata: Record&lt;string, unknown&gt;;
+}
+
+interface Capability extends Resource {
+  type: 'capability';
+  operation: Operation;
+  inputSchema: JsonSchema;
+  outputSchema: JsonSchema;
+  sideEffects: SideEffect[];
+  risk: 'low' | 'medium' | 'high' | 'critical';
+  confirmation: ConfirmationMode;
+  idempotency: 'none' | 'supported' | 'required';
+  reversibility: 'reversible' | 'partially_reversible' | 'irreversible';
+}
+
+type Operation =
+  | 'discover' | 'inspect' | 'read' | 'create' | 'update'
+  | 'delete' | 'execute' | 'share' | 'delegate';</div><h3>3.1 Resource and capability separation</h3><p>A tool is a resource whose operation is usually <span class="badge">execute</span>. Its schema can be inspectable even when invocation is denied. A data resource can expose read capabilities and mutation capabilities separately.</p><div class="tablewrap"><table><thead><tr><th>Permission</th><th>Discloses</th><th>Does not imply</th></tr></thead><tbody><tr><td><span class="badge">discover</span></td><td>That a resource exists</td><td>Schema, contents, or use</td></tr><tr><td><span class="badge">inspect</span></td><td>Metadata, schema, risk, side effects</td><td>Contents or execution</td></tr><tr><td><span class="badge">read</span></td><td>Contents, subject to field filters</td><td>Mutation or sharing</td></tr><tr><td><span class="badge">execute</span></td><td>Invocation of a named capability</td><td>Access to implementation data</td></tr><tr><td><span class="badge">share</span></td><td>Permission to grant access onward</td><td>Permission to use the resource personally</td></tr></tbody></table></div></div></section>
+<section class="section" id="policy"><div class="wrap"><h2>4. Policy language</h2><p class="intro">Policies are declarative. The reference evaluator is deterministic, side-effect free, and usable without an agent or network call.</p><div class="code">interface Policy {
+  id: string;
+  effect: 'allow' | 'deny';
+  principal: SubjectSelector;
+  operation: Operation | Operation[];
+  resource: ResourceSelector;
+  scope?: ScopeExpression;
+  conditions?: ConditionExpression[];
+  obligations?: Obligation[];
+  priority: number;
+  validDuring?: TimeWindow;
+  version: string;
+}
+
+interface AuthorizationRequest {
+  requestId: string;
+  subject: Subject;
+  operation: Operation;
+  resource: ResourceRef;
+  proposedInput?: unknown;
+  purpose?: string;
+  context: RequestContext;
+}
+
+interface Decision {
+  requestId: string;
+  effect: 'allow' | 'deny';
+  reasonCode: string;
+  matchedPolicies: string[];
+  obligations: Obligation[];
+  fieldFilter?: FieldFilter;
+  expiresAt?: string;
+  policyVersion: string;
+}</div><h3>4.1 Conditions</h3><div class="grid2"><div class="card"><h4>Subject and scope</h4><p><span class="badge">subjectIs</span>, <span class="badge">roleIs</span>, <span class="badge">ownerIsSubject</span>, <span class="badge">resourceInWorkspace</span>, <span class="badge">fieldsWithin</span></p></div><div class="card"><h4>Context</h4><p><span class="badge">purposeIs</span>, <span class="badge">approvalPresent</span>, <span class="badge">timeBetween</span>, <span class="badge">deviceTrustAtLeast</span>, <span class="badge">mfaRecent</span></p></div><div class="card"><h4>Input constraints</h4><p><span class="badge">recipientCountAtMost</span>, <span class="badge">amountAtMost</span>, <span class="badge">domainIs</span>, <span class="badge">queryContainsNoSecrets</span></p></div><div class="card"><h4>Obligations</h4><p><span class="badge">requireConfirmation</span>, <span class="badge">previewChanges</span>, <span class="badge">redactFields</span>, <span class="badge">writeReceipt</span>, <span class="badge">requireHumanReview</span></p></div></div><div class="code" style="margin-top:20px">policy.allow({
+  id: 'john-send-own-mail',
+  principal: subject('user:john'),
+  operation: 'execute',
+  resource: capability('mail.send'),
+  scope: { mailbox: 'user:john' },
+  conditions: [
+    purposeIs('job_outreach'),
+    recipientCountAtMost(20),
+    approvalPresent('this_action')
+  ],
+  obligations: [writeReceipt(), requireConfirmation('explicit')]
+});</div></div></section>
+<section class="section" id="evaluation"><div class="wrap"><h2>5. Policy evaluation algorithm</h2><p class="intro">The evaluator must return the same result for the same policy set, request, and context. A deny result is the default.</p><div class="flow"><div class="flowitem">Normalize request</div><div class="arrow">→</div><div class="flowitem">Check identity</div><div class="arrow">→</div><div class="flowitem">Match rules</div><div class="arrow">→</div><div class="flowitem">Resolve conflict</div><div class="arrow">→</div><div class="flowitem">Apply obligations</div><div class="arrow">→</div><div class="flowitem">Return decision</div></div><ol><li>Validate the request schema and reject unknown operations or malformed resource references.</li><li>Require an authenticated subject for every operation except explicitly public discovery.</li><li>Resolve the resource and its current version.</li><li>Collect policies matching subject, operation, resource, scope, and validity window.</li><li>Evaluate conditions against the current request context and proposed input.</li><li>Apply deny-overrides: a matching deny wins over an allow at the same effective priority.</li><li>Apply priority ordering. A more specific rule outranks a broader rule only when the policy explicitly declares its priority.</li><li>Return allow only when at least one applicable allow remains and no applicable deny overrides it.</li><li>Attach obligations, field filters, expiration, policy version, and machine-readable reason code.</li></ol><div class="note"><strong>Fail-closed behavior:</strong> unavailable policy services, stale policy versions, invalid input, missing identity, and ambiguous rule conflicts produce denial for protected resources.</div></div></section>
+<section class="section" id="api"><div class="wrap"><h2>6. Reference API</h2><p class="intro">The library is split into pure core contracts and adapters. A host application can use only the parts it needs.</p><div class="code">const cup = createCapabilityUI({
+  registry,
+  policy: policyEngine,
+  receipts: receiptSink,
+  clock: systemClock,
+  nonce: nonceProvider
+});
+
+// 1. Register typed resources and tools.
+cup.register(calendarResource);
+cup.register(createEventCapability);
+
+// 2. Ask for the safe view given the user's goal.
+const view = await cup.project({
+  subject: john,
+  goal: 'plan a team meeting',
+  context: requestContext
+});
+
+// 3. Give only this view to the agent or renderer.
+const response = await agent.compose({ goal, authorizedView: view });
+
+// 4. Re-authorize the exact action at the side-effect boundary.
+const receipt = await cup.execute({
+  subject: john,
+  capability: 'calendar.create_event',
+  input: response.action.input,
+  confirmation: response.action.confirmation,
+  context: requestContext
+});</div><h3>6.1 Public interfaces</h3><div class="grid2"><div class="card"><h3>Registry</h3><p><span class="badge">register(resource)</span> · <span class="badge">get(id,version)</span> · <span class="badge">listDiscoverable(request)</span> · <span class="badge">validate(id,input)</span></p></div><div class="card"><h3>Policy engine</h3><p><span class="badge">authorize(request)</span> · <span class="badge">explain(request)</span> · <span class="badge">policyVersion()</span> · <span class="badge">invalidate(cacheKey)</span></p></div><div class="card"><h3>Projector</h3><p><span class="badge">project(request)</span> · <span class="badge">redact(resource,decision)</span> · <span class="badge">buildActionSchema(capability)</span></p></div><div class="card"><h3>Executor</h3><p><span class="badge">prepare(request)</span> · <span class="badge">confirm(token)</span> · <span class="badge">execute(request)</span> · <span class="badge">reverse(receiptId)</span></p></div></div></div></section>
+<section class="section" id="projection"><div class="wrap"><h2>7. Authorized projection</h2><p class="intro">The projector converts policy decisions into an agent-safe document. It includes only what the consumer may see and do.</p><div class="code">interface AuthorizedView {
+  viewId: string;
+  subjectId: string;
+  purpose?: string;
+  generatedAt: string;
+  policyVersion: string;
+  resources: AuthorizedResource[];
+  globalObligations: Obligation[];
+}
+
+interface AuthorizedResource {
+  ref: ResourceRef;
+  visibility: 'listed' | 'inspectable' | 'readable' | 'usable';
+  schema?: JsonSchema;
+  data?: unknown;
+  fields?: FieldPermission[];
+  capabilities: AuthorizedCapability[];
+}
+
+interface AuthorizedCapability {
+  id: string;
+  inputSchema: JsonSchema;
+  outputSchema: JsonSchema;
+  risk: Risk;
+  sideEffects: SideEffect[];
+  obligations: Obligation[];
+  actionToken: string; // opaque, short-lived, audience-bound
+}</div><h3>7.1 Field-level permissions</h3><p>Field filters are applied after authorization and before projection. A caller may read a contact record while receiving only name and organization. Redaction must be structural, not a string replacement that can leak through derived fields.</p><div class="tablewrap"><table><thead><tr><th>Projection state</th><th>Agent receives</th><th>Renderer may show</th></tr></thead><tbody><tr><td>Hidden</td><td>Nothing</td><td>Nothing</td></tr><tr><td>Listed</td><td>Stable ref and safe label</td><td>Existence and label</td></tr><tr><td>Inspectable</td><td>Schema, risk, side effects</td><td>Form structure and warnings</td></tr><tr><td>Readable</td><td>Filtered contents</td><td>Authorized fields</td></tr><tr><td>Usable</td><td>Short-lived action token</td><td>Action control with obligations</td></tr></tbody></table></div></div></section>
+<section class="section" id="execution"><div class="wrap"><h2>8. Execution and confirmation</h2><p class="intro">Execution is a separate protocol from projection. The executor trusts neither a UI event nor an agent-produced payload.</p><div class="grid"><article class="card"><h3>Prepare</h3><p>Validate capability ID, input schema, subject, purpose, current resource version, and action-token audience.</p></article><article class="card"><h3>Confirm</h3><p>For an explicit obligation, show the normalized action and side effects. Bind confirmation to the exact input hash.</p></article><article class="card"><h3>Execute</h3><p>Re-authorize immediately before calling the adapter. Enforce scope and input constraints again.</p></article><article class="card"><h3>Receipt</h3><p>Record policy version, input hash, confirmation, result, actor, and reversal reference.</p></article><article class="card"><h3>Retry</h3><p>Use idempotency keys for capabilities that can create duplicate external effects.</p></article><article class="card"><h3>Reverse</h3><p>Expose a separate reversal capability. Reversibility is never inferred from the original operation.</p></article></div><div class="code" style="margin-top:22px">interface ExecutionRequest {
+  subject: Subject;
+  capability: string;
+  input: unknown;
+  actionToken?: string;
+  confirmation?: Confirmation;
+  idempotencyKey?: string;
+  context: RequestContext;
+}
+
+interface Receipt {
+  id: string;
+  status: 'succeeded' | 'failed' | 'denied' | 'pending';
+  actor: SubjectRef;
+  capability: string;
+  resourceRefs: ResourceRef[];
+  inputHash: string;
+  decision: Decision;
+  confirmation?: Confirmation;
+  resultSummary?: unknown;
+  reversibleBy?: string;
+  createdAt: string;
+}</div></div></section>
+<section class="section" id="security"><div class="wrap"><h2>9. Security model</h2><div class="grid2"><div class="card"><h3>Threats addressed</h3><ul><li>Prompt injection attempting to reveal hidden resources.</li><li>Agent hallucination of unavailable tools or fields.</li><li>Forged UI events and modified client payloads.</li><li>Confused-deputy actions through delegated agents.</li><li>Stale permissions after revocation.</li><li>Over-broad approval reused for another purpose.</li><li>Data leakage through derived output or error messages.</li></ul></div><div class="card"><h3>Required controls</h3><ul><li>Backend enforcement for every protected operation.</li><li>Opaque, audience-bound, short-lived action tokens.</li><li>Default deny and deny-overrides conflict resolution.</li><li>Policy version and resource version checks.</li><li>Input and output schema validation.</li><li>Purpose binding, expiration, and approval nonce binding.</li><li>Structured receipts with tamper-evident storage.</li></ul></div></div><h3>9.1 Trust boundaries</h3><div class="flow"><div class="flowitem">Identity provider</div><div class="arrow">→</div><div class="flowitem">Host app</div><div class="arrow">→</div><div class="flowitem">CUP policy core</div><div class="arrow">→</div><div class="flowitem">Agent / renderer</div><div class="arrow">→</div><div class="flowitem">CUP executor</div><div class="arrow">→</div><div class="flowitem">External adapter</div></div><p class="note" style="margin-top:22px"><strong>Boundary rule:</strong> agents and renderers are untrusted consumers of projections. External adapters are trusted only to perform the operation that the executor has already authorized.</p></div></section>
+<section class="section" id="adapters"><div class="wrap"><h2>10. Adapter contracts</h2><p class="intro">Adapters isolate vendor and framework choices from the protocol.</p><div class="grid"><article class="card"><h3>IdentityAdapter</h3><p>Resolves authenticated subjects and attributes. It cannot grant resource permissions.</p></article><article class="card"><h3>ResourceAdapter</h3><p>Loads current resource metadata, versions, schemas, and data. It applies ownership rules supplied by the host.</p></article><article class="card"><h3>PolicyAdapter</h3><p>Evaluates requests locally or through OPA, Cedar, a database, or a custom evaluator.</p></article><article class="card"><h3>CapabilityAdapter</h3><p>Executes a named operation after the executor has authorized it. It receives normalized input only.</p></article><article class="card"><h3>RendererAdapter</h3><p>Converts authorized schemas into React, Web Components, native controls, voice prompts, or other presentation.</p></article><article class="card"><h3>ReceiptSink</h3><p>Writes receipts to an append-only store and supports lookup by request, actor, resource, and capability.</p></article></div><div class="code" style="margin-top:22px">interface CapabilityAdapter {
+  capabilityId: string;
+  invoke(input: unknown, ctx: ExecutionContext): Promise&lt;unknown&gt;;
+}
+
+interface RendererAdapter&lt;T&gt; {
+  render(view: AuthorizedView, target: T): RenderResult;
+}
+
+interface ReceiptSink {
+  append(receipt: Receipt): Promise&lt;void&gt;;
+  find(query: ReceiptQuery): Promise&lt;Receipt[]&gt;;
+}</div></div></section>
+<section class="section" id="conformance"><div class="wrap"><h2>11. Conformance and testing</h2><p class="intro">An implementation is CUP-conformant only when it passes semantic tests. Matching method names is insufficient.</p><div class="grid2"><div class="card"><h3>Core conformance</h3><ul><li>Unknown operations are rejected.</li><li>No matching allow produces deny.</li><li>Matching deny overrides allow at equal priority.</li><li>Expiration and revocation take effect at execution.</li><li>Discovery never leaks protected metadata.</li><li>Field filters remove unauthorized values structurally.</li><li>Projection and execution produce the same policy version check.</li></ul></div><div class="card"><h3>Execution conformance</h3><ul><li>Modified input invalidates confirmation.</li><li>Wrong audience invalidates action tokens.</li><li>Missing idempotency key is rejected when required.</li><li>Adapters cannot be called after a denied decision.</li><li>Every required receipt is written before success returns.</li><li>Reversal uses a distinct authorized capability.</li><li>Policy failures fail closed for protected resources.</li></ul></div></div><h3>11.1 Reference fixture</h3><div class="code">test('other user cannot send from John mailbox', async () =&gt; {
+  const decision = await engine.authorize({
+    subject: otherUser,
+    operation: 'execute',
+    resource: ref('mail.send'),
+    proposedInput: { mailbox: 'user:john', recipients: ['x@example.com'] },
+    purpose: 'job_outreach',
+    context
+  });
+  expect(decision.effect).toBe('deny');
+  expect(adapter.invoke).not.toHaveBeenCalled();
+});</div></div></section>
+<section class="section" id="roadmap"><div class="wrap"><h2>12. Release plan and open decisions</h2><div class="grid"><article class="card"><h3>v0.1 · semantic core</h3><p>TypeScript types, pure evaluator, JSON Schema validation, projections, action tokens, receipts, and conformance fixtures.</p></article><article class="card"><h3>v0.2 · production adapters</h3><p>PostgreSQL resource adapter, OPA or Cedar bridge, React renderer contract, Web Components renderer, and policy simulator.</p></article><article class="card"><h3>v0.3 · delegation</h3><p>Delegation chains, capability attenuation, organization policy, approval workflows, and cross-service receipts.</p></article></div><h3>Decisions requiring field experience</h3><div class="tablewrap"><table><thead><tr><th>Question</th><th>Current proposal</th><th>Evidence needed</th></tr></thead><tbody><tr><td>Policy language</td><td>Typed builder API plus portable JSON representation</td><td>Interoperability tests across evaluators</td></tr><tr><td>Action tokens</td><td>Opaque, short-lived, audience-bound tokens</td><td>Operational latency and revocation requirements</td></tr><tr><td>Policy conflict</td><td>Deny-overrides with explicit priority</td><td>Enterprise policy authoring studies</td></tr><tr><td>UI contract</td><td>AuthorizedView independent of visual framework</td><td>React, native, voice, and accessibility implementations</td></tr><tr><td>Receipt storage</td><td>Append-only sink owned by host application</td><td>Audit, privacy, retention, and redaction requirements</td></tr></tbody></table></div><div class="note" style="margin-top:22px"><strong>Recommended first build:</strong> implement the pure evaluator and execution guard before building a broad renderer ecosystem. The protocol’s value depends on the enforcement contract, not the visual novelty of the generated interface.</div></div></section>
+<section class="section" id="mcp"><div class="wrap"><h2>13. MCP server profile</h2><p class="intro">CUP is transport-neutral at its core. MCP becomes an official server profile: a mapping from CUP resources and capabilities to MCP resources, resource templates, tools, prompts, and notifications. The MCP adapter exposes only the authorized projection for the current session.</p><div class="note"><strong>Design decision:</strong> MCP is an interoperability surface, not the permission model. CUP evaluates authorization before an MCP item is listed, read, subscribed to, or called.</div><h3>13.1 Protocol mapping</h3><div class="tablewrap"><table><thead><tr><th>CUP concept</th><th>MCP surface</th><th>Adapter rule</th></tr></thead><tbody><tr><td>Resource with <span class="badge">discover</span></td><td><span class="badge">resources/list</span></td><td>Return only discoverable resources; omit hidden resources rather than returning an authorization error that leaks existence.</td></tr><tr><td>Inspectable resource</td><td><span class="badge">resources/templates/list</span> or resource metadata</td><td>Expose schema, labels, risk, and side effects only when inspection is allowed.</td></tr><tr><td>Readable data resource</td><td><span class="badge">resources/read</span></td><td>Resolve the URI, re-authorize the subject, and apply field-level redaction before returning contents.</td></tr><tr><td>Capability with <span class="badge">execute</span></td><td><span class="badge">tools/list</span> + <span class="badge">tools/call</span></td><td>List the tool only when inspectable. Call requires a fresh CUP decision for the exact arguments.</td></tr><tr><td>UI or workflow prompt</td><td><span class="badge">prompts/list</span> + <span class="badge">prompts/get</span></td><td>Prompts are templates, not authority. Treat returned prompt text as untrusted input.</td></tr><tr><td>Resource change</td><td><span class="badge">notifications/resources/list_changed</span></td><td>Notify about safe catalog changes without revealing hidden resource identifiers.</td></tr></tbody></table></div><h3>13.2 Server architecture</h3><div class="flow"><div class="flowitem">MCP client</div><div class="arrow">→</div><div class="flowitem">MCP transport</div><div class="arrow">→</div><div class="flowitem">CUP session adapter</div><div class="arrow">→</div><div class="flowitem">Projection</div><div class="arrow">→</div><div class="flowitem">Policy core</div><div class="arrow">→</div><div class="flowitem">Host adapter</div></div><p>The server holds a session subject and context. Every request enters through the adapter, which converts MCP parameters into an <span class="badge">AuthorizationRequest</span>. The adapter never passes the MCP client directly to a host capability.</p><div class="code">interface MCPServerProfile {
+  name: string;
+  protocolVersion: string;
+  capabilities: {
+    resources?: boolean;
+    tools?: boolean;
+    prompts?: boolean;
+    subscriptions?: boolean;
+    sampling?: boolean;
+  };
+  session: MCPSession;
+  listResources(): Promise&lt;MCPResource[]&gt;;
+  readResource(uri: string): Promise&lt;MCPContent[]&gt;;
+  listTools(): Promise&lt;MCPTool[]&gt;;
+  callTool(name: string, args: unknown): Promise&lt;MCPToolResult&gt;;
+  listPrompts(): Promise&lt;MCPPrompt[]&gt;;
+  getPrompt(name: string, args: unknown): Promise&lt;MCPPromptResult&gt;;
+}
+
+interface MCPSession {
+  id: string;
+  subject: Subject;
+  purpose?: string;
+  transport: 'stdio' | 'streamable_http';
+  policyVersion: string;
+  createdAt: string;
+  expiresAt: string;
+}</div><h3>13.3 Tool projection</h3><p>A CUP capability maps to an MCP tool only when its input schema is representable as JSON Schema and its output can be converted into MCP content blocks. The adapter adds CUP metadata in an extension namespace so an MCP client can render safer controls when it understands the extension.</p><div class="code">{
+  "name": "calendar_create_event",
+  "description": "Create a calendar event",
+  "inputSchema": { "type": "object", "required": ["title", "start", "end"] },
+  "_cup": {
+    "capabilityId": "calendar.create_event",
+    "risk": "medium",
+    "sideEffects": ["external_commitment"],
+    "confirmation": "explicit",
+    "reversibility": "reversible",
+    "policyVersion": "policy-42"
+  }
+}</div><h3>13.4 MCP call sequence</h3><ol><li>Complete MCP initialization and bind the authenticated subject to the session.</li><li>Build an authorized CUP projection for the session purpose.</li><li>Answer <span class="badge">tools/list</span> from that projection. Do not expose the host registry wholesale.</li><li>On <span class="badge">tools/call</span>, resolve the MCP name to one immutable capability ID and current version.</li><li>Validate arguments against the capability schema and compute an input hash.</li><li>Run CUP authorization against the current subject, scope, purpose, approval, and input.</li><li>Return a structured denial if policy rejects the call. Do not invoke the host adapter.</li><li>If an obligation requires confirmation, return a preview-oriented result or use a host confirmation channel; never treat the MCP call itself as consent.</li><li>Invoke the host adapter only after enforcement passes, then write a receipt before returning success.</li></ol><h3>13.5 Resources, templates, and subscriptions</h3><p>Resource URIs must be stable, opaque where appropriate, and safe to log. URI templates must not allow a client to widen scope by editing path parameters. For subscriptions, the server rechecks authorization on every update and sends a removal or invalidation notification when access is revoked.</p><div class="grid2"><div class="card"><h3>Streamable HTTP</h3><p>Use for remote servers. Bind the MCP session to authenticated identity, origin, audience, and expiration. Do not accept a bearer token supplied inside tool arguments.</p></div><div class="card"><h3>stdio</h3><p>Use for local servers. Pass a filtered environment, keep the host policy authority outside the child process, and treat child output as untrusted content.</p></div><div class="card"><h3>Sampling</h3><p>Server-requested model calls are separate capabilities. Apply rate, model, token, and tool-loop limits. A server cannot use sampling to bypass CUP policy.</p></div><div class="card"><h3>Delegation</h3><p>Represent the MCP server as a distinct principal. Delegated authority is attenuated to the intersection of the user grant, server grant, and capability scope.</p></div></div><h3>13.6 MCP conformance tests</h3><div class="grid2"><div class="card"><ul><li>Hidden CUP resources never appear in <span class="badge">resources/list</span>.</li><li>Unauthorized fields never appear in <span class="badge">resources/read</span>.</li><li>A tool absent from the authorized projection cannot be called by name.</li><li>Changing tool arguments invalidates a prior confirmation.</li><li>Revoking access removes or invalidates active subscriptions.</li></ul></div><div class="card"><ul><li>Every MCP call performs a fresh CUP decision.</li><li>MCP error text contains no protected resource contents.</li><li>Prompt content cannot grant a capability or alter policy.</li><li>Sampling cannot invoke tools outside the server’s attenuation set.</li><li>Receipts link the MCP session, request ID, capability, and host result.</li></ul></div></div><div class="note" style="margin-top:22px"><strong>Result:</strong> the same CUP library can power a web renderer, a native renderer, a voice interface, or an MCP server. Each surface receives a projection and uses the same execution guard.</div></div></section>
+<section class="section" id="examples"><div class="wrap"><h2>14. Usage examples</h2><p class="intro">These examples show how an application, agent, renderer, and MCP client share one capability contract. Each example begins with a concrete product problem, identifies the library boundary involved, and then shows a representative implementation.</p><p class="intro">Choose an example below according to the product problem you are solving. Each card explains what the pattern is for and which part of the library it exercises.</p><div class="note" style="margin:26px 0"><strong>Standalone code convention:</strong> The reference examples below are independent files. Every snippet declares its imports, types, local values, policy, call path, and result handling. Comments identify where CUP is making the authorization decision. Replace the illustrative adapter implementations with production integrations.</div><h3>14.0 Standalone reference implementations</h3><p class="intro">These complete samples focus on use rather than registration. Agent examples use an external runtime supplied by the host; CUP only supplies identity, projections, policy decisions, and guarded capability access. Copy any one into its own TypeScript file. Each sample creates the CUP instance it needs and calls a real library operation from request to result.</p><h4>14.0.1 Read filtered data</h4><div class="card example-card"><strong>Use case:</strong> A user searches CRM contacts. CUP separates discovery from reading, binds access to a workspace, limits the query, and redacts fields before returning data.</div><div class="code">import {
+  createCapabilityUI,
+  memoryRegistry,
+  policy,
+  subject,
+  resource,
+  type Subject,
+  type RequestContext
+} from '@capability-ui/core';
+
+// This fake adapter stands in for a database-backed ResourceAdapter.
+const contacts = [
+  { id: 'c1', workspaceId: 'acme', name: 'Ada', company: 'Acme', email: 'ada@acme.test', phone: '555-0100' },
+  { id: 'c2', workspaceId: 'other', name: 'Lin', company: 'Other', email: 'lin@other.test', phone: '555-0101' }
+];
+
+const registry = memoryRegistry();
+registry.register({
+  id: 'crm.contacts', type: 'data', version: '1.0',
+  sensitivity: 'confidential', schema: contactSchema,
+  read: async ({ scope, query }) =&gt; contacts.filter(c =&gt;
+    c.workspaceId === scope.workspaceId &amp;&amp; c.name.includes(query.search)
+  )
+});
+
+const cup = createCapabilityUI({
+  registry,
+  policy: policy.denyByDefault(),
+  receipts: inMemoryReceipts()
+});
+
+// CUP allows the sales role to read only its own workspace.
+cup.policy.allow({
+  id: 'sales-contact-read', principal: { role: 'sales' },
+  operation: 'read', resource: resource('crm.contacts'),
+  scope: { workspaceId: { fromSubject: 'workspaceId' } },
+  obligations: [{ type: 'redact', fields: ['phone'] }]
+});
+
+const user: Subject = {
+  id: 'user:ada', type: 'user', authenticated: true,
+  attributes: { role: 'sales', workspaceId: 'acme' }
+};
+const context: RequestContext = {
+  purpose: 'contact_lookup', channel: 'web'
+};
+
+async function main() {
+  // Discovery asks whether the user may know that the resource exists.
+  const available = await cup.discover({ subject: user, purpose: context.purpose, context });
+
+  // Read performs a second decision, applies scope, then redacts phone numbers.
+  const result = await cup.read({
+    subject: user, resource: 'crm.contacts',
+    query: { search: 'Ada', limit: 10 },
+    fields: ['id', 'name', 'company', 'email'],
+    scope: { workspaceId: user.attributes.workspaceId },
+    purpose: context.purpose, context
+  });
+
+  console.log({ available, contacts: result.items, receiptId: result.receiptId });
+}
+
+void main();</div><h4>14.0.2 Execute a confirmed tool</h4><div class="card example-card"><strong>Use case:</strong> A user sends an email. CUP validates the arguments, requires explicit confirmation, binds that confirmation to the exact payload, and records the result.</div><div class="code">import {
+  createCapabilityUI,
+  memoryRegistry,
+  policy,
+  subject,
+  capability,
+  type Subject
+} from '@capability-ui/core';
+
+const cup = createCapabilityUI({
+  registry: memoryRegistry(),
+  policy: policy.denyByDefault(),
+  receipts: postgresReceipts(process.env.DATABASE_URL)
+});
+
+// The schema prevents malformed recipients and the metadata tells the UI
+// that this action creates an external side effect.
+cup.register(capability({
+  id: 'mail.send', operation: 'execute', inputSchema: mailSchema,
+  outputSchema: receiptSchema, risk: 'high',
+  sideEffects: ['external_message'], confirmation: 'explicit',
+  idempotency: 'required',
+  handler: async (input, ctx) =&gt; mailProvider.send(input, ctx.idempotencyKey)
+}));
+
+const user: Subject = subject('user:john', { roles: ['owner'] });
+cup.policy.allow({
+  id: 'owner-send-mail', principal: user,
+  operation: 'execute', resource: capability('mail.send'),
+  conditions: [purposeIs('job_outreach'), recipientCountAtMost(20)],
+  obligations: [requireConfirmation('explicit'), writeReceipt()]
+});
+
+async function main() {
+  const input = {
+    from: 'john@example.com', to: ['recruiter@example.com'],
+    subject: 'Product role', body: 'Hello from John.'
+  };
+
+  // Prepare normalizes the input and computes the hash that confirmation signs.
+  const prepared = await cup.prepare({
+    subject: user, capability: 'mail.send', input,
+    purpose: 'job_outreach', context: { channel: 'web' }
+  });
+  console.log('Review before sending:', prepared.preview);
+
+  // The UI must confirm the exact prepared payload, not a paraphrase of it.
+  const confirmation = await userConfirm({
+    inputHash: prepared.inputHash, sideEffects: prepared.sideEffects
+  });
+
+  // Execute rechecks policy immediately before the provider is called.
+  const receipt = await cup.execute({
+    ...prepared.request, confirmation,
+    idempotencyKey: 'job-outreach-2026-01'
+  });
+  console.log('Final receipt:', receipt);
+}
+
+void main();</div><h4>14.0.3 Run a bounded single-agent task</h4><div class="card example-card"><strong>Use case:</strong> An assistant prepares a meeting brief. The agent may choose steps, but CUP decides which resources and actions are available on every iteration and enforces a read budget.</div><div class="code">import {
+  createCapabilityUI,
+  memoryRegistry,
+  policy,
+  subject,
+  type AuthorizedView,
+  type AgentAction
+} from '@capability-ui/core';
+// External runtime: CUP does not provide this implementation.
+import { createRuntime } from 'any-existing-agent-framework';
+
+const cup = createCapabilityUI({
+  registry: productionRegistry(),
+  policy: productionPolicy(),
+  receipts: postgresReceipts(process.env.DATABASE_URL)
+});
+const assistant = subject('agent:personal', { owner: 'user:john' });
+// The host supplies an agent from its chosen framework.
+const agent = createRuntime({ model: 'configured-by-host' });
+
+async function main() {
+  // Projection limits the agent's initial knowledge to this goal and purpose.
+  const view: AuthorizedView = await cup.project({
+    subject: assistant,
+    goal: 'prepare tomorrow meeting brief',
+    context: { purpose: 'meeting_brief', channel: 'web' }
+  });
+
+  let state = { facts: [], readsUsed: 0, receipts: [] };
+  for (let step = 0; step &lt; 8; step += 1) {
+    // The model can propose an action, but it cannot invent authority.
+    const proposal: AgentAction = await agent.planNext({
+      goal: 'prepare tomorrow meeting brief', state, authorizedView: view
+    });
+    if (proposal.kind === 'final') break;
+
+    // CUP re-authorizes each step against current policy and the remaining budget.
+    const receipt = await cup.execute({
+      subject: assistant, capability: proposal.capability,
+      input: proposal.input, purpose: 'meeting_brief',
+      context: { budget: { reads: 20 - state.readsUsed } }
+    });
+    state = reduceAgentState(state, receipt);
+
+    // A denial becomes a typed constraint for the next planning step.
+    if (receipt.status === 'denied') {
+      state = addConstraint(state, receipt.decision.reasonCode);
+    }
+  }
+  console.log(await agent.summarize(state));
+}
+
+void main();</div><h4>14.0.4 Coordinate delegated research agents</h4><div class="card example-card"><strong>Use case:</strong> A coordinator asks separate agents to scan public sources and private research notes. Each worker receives attenuated authority, a separate identity, a purpose, and an expiration.</div><div class="code">import {
+  createCapabilityUI,
+  productionRegistry,
+  productionPolicy,
+  subject,
+  type DelegationGrant
+} from '@capability-ui/core';
+import { runWorker } from '@agent-workers/runtime';
+
+const cup = createCapabilityUI({
+  registry: productionRegistry(), policy: productionPolicy(),
+  receipts: postgresReceipts(process.env.DATABASE_URL)
+});
+const user = subject('user:john');
+const coordinator = subject('agent:research-coordinator');
+
+async function main() {
+  // Each grant is narrower than John's authority and expires quickly.
+  const webGrant: DelegationGrant = await cup.delegate({
+    from: user, to: subject('agent:web-worker'), capability: 'web.search',
+    attenuation: {
+      purpose: 'market_scan', expiresIn: '15m', operations: ['execute'],
+      scope: { domains: ['public-data.org'] }
+    }
+  });
+  const notesGrant: DelegationGrant = await cup.delegate({
+    from: user, to: subject('agent:notes-worker'), capability: 'notes.read',
+    attenuation: {
+      purpose: 'market_scan', expiresIn: '15m', operations: ['read'],
+      scope: { notebook: 'research', fields: ['title', 'body'] }
+    }
+  });
+
+  // Workers call through CUP; they never receive direct database credentials.
+  const findings = await Promise.all([
+    runWorker({ grant: webGrant, goal: 'find public market evidence',
+      call: (capability, input) =&gt; cup.execute({
+        subject: webGrant.to, delegation: webGrant, capability, input,
+        purpose: 'market_scan', context: {}
+      }) }),
+    runWorker({ grant: notesGrant, goal: 'find relevant internal notes',
+      call: (capability, input) =&gt; cup.execute({
+        subject: notesGrant.to, delegation: notesGrant, capability, input,
+        purpose: 'market_scan', context: {}
+      }) })
+  ]);
+
+  // Worker output is untrusted content before synthesis.
+  console.log(await synthesizeFor(coordinator, sanitizeUntrusted(findings)));
+}
+
+void main();</div><h4>14.0.5 Serve the same capabilities through MCP</h4><div class="card example-card"><strong>Use case:</strong> An MCP client connects to a CUP-backed server. The server lists only session-authorized resources and tools, then sends every call through the same execution guard used by web and native clients.</div><div class="code">import { createCapabilityUI, productionRegistry, productionPolicy } from '@capability-ui/core';
+import { createMCPServer } from '@capability-ui/mcp';
+import { verifyOIDC } from '@company/identity';
+
+const cup = createCapabilityUI({
+  registry: productionRegistry(), policy: productionPolicy(),
+  receipts: postgresReceipts(process.env.DATABASE_URL)
+});
+
+const server = createMCPServer({
+  name: 'john-workspace', cup,
+  authenticate: async request =&gt; verifyOIDC(request.headers.authorization),
+  transports: ['streamable_http']
+});
+
+// resources/list and tools/list call cup.project() for the authenticated session.
+// They never dump the host registry to the MCP client.
+server.on('resources/list', async session =&gt; cup.project({
+  subject: session.subject, goal: session.goal, context: session.context
+}));
+
+// tools/call resolves one immutable capability and delegates enforcement to CUP.
+server.on('tools/call', async (session, call) =&gt; cup.execute({
+  subject: session.subject, capability: call.cupCapabilityId,
+  input: call.arguments, purpose: session.purpose, context: session.context
+}));
+
+await server.listen({ http: { port: 8787, path: '/mcp' } });</div><h4>14.0.6 Use a remote MCP server inside an agent task</h4><div class="card example-card"><strong>Use case:</strong> An agent uses a remote planning service, but the local CUP host controls whether that remote tool is visible and executable. Remote authority is namespaced and attenuated.</div><div class="code">import {
+  createCapabilityUI,
+  productionRegistry,
+  productionPolicy,
+  subject
+} from '@capability-ui/core';
+import { connectMCP } from '@capability-ui/mcp-client';
+// External runtime: CUP does not provide this implementation.
+import { createRuntime } from 'any-existing-agent-framework';
+
+const cup = createCapabilityUI({
+  registry: productionRegistry(), policy: productionPolicy(),
+  receipts: postgresReceipts(process.env.DATABASE_URL)
+});
+const agentSubject = subject('agent:personal', { owner: 'user:john' });
+// The host supplies an agent from its chosen framework.
+const agent = createRuntime({ model: 'configured-by-host' });
+
+async function main() {
+  // Mounting imports schemas; it does not grant execution permission.
+  const remote = await connectMCP({
+    url: 'https://planning.example/mcp',
+    auth: process.env.MCP_OIDC_TOKEN,
+    serverName: 'planning'
+  });
+  await cup.mount(remote, { namespace: 'planning_remote' });
+
+  // The local projection filters the remote tools for this subject and goal.
+  const view = await cup.project({
+    subject: agentSubject, goal: 'create a launch plan',
+    context: { purpose: 'project_planning' }
+  });
+  const plan = await agent.plan({ goal: 'create a launch plan', tools: view.capabilities });
+
+  for (const action of plan.actions) {
+    // This local check runs before the MCP adapter forwards the call remotely.
+    const receipt = await cup.execute({
+      subject: agentSubject, capability: action.capability,
+      input: action.input, purpose: 'project_planning', context: {}
+    });
+    if (receipt.status !== 'succeeded') {
+      console.error('CUP stopped action:', receipt.decision.reasonCode);
+      break;
+    }
+  }
+}
+
+void main();</div><h3>14.1 Minimal application setup</h3><div class="card example-card"><strong>What it is:</strong> The smallest host application that creates a registry, policy engine, and receipt sink.<br><strong>Purpose:</strong> Give a developer a starting point for adopting CUP without changing the existing database or agent.<br><strong>How CUP is applied:</strong> The host registers a resource with an identity, schema, owner, and version. It starts from deny-by-default, then adds one explicit policy allowing John to read that resource. Later projections can expose only this authorized resource, while receipts provide the audit boundary.</div><div class="code">import { createCapabilityUI, memoryRegistry, denyByDefault } from '@capability-ui/core';
+
+const cup = createCapabilityUI({
+  registry: memoryRegistry(),
+  policy: denyByDefault(),
+  receipts: postgresReceipts(process.env.DATABASE_URL),
+  clock: systemClock()
+});
+
+cup.register({
+  id: 'notes.john', type: 'data', version: '1.0',
+  sensitivity: 'personal', owner: 'user:john',
+  schema: noteSchema
+});
+
+cup.policy.allow({
+  id: 'john-read-notes', principal: subject('user:john'),
+  operation: 'read', resource: resource('notes.john'),
+  scope: { fields: ['id', 'title', 'body'] }, priority: 100
+});</div><h3>14.2 Expose a database as filtered data</h3><div class="card example-card"><strong>What it is:</strong> A CRM resource whose rows and fields are constrained by workspace and role.<br><strong>Purpose:</strong> Show that permission applies to the returned data, not merely to a database endpoint.<br><strong>How CUP is applied:</strong> The resource adapter loads data only for the subject’s workspace. The policy matches the sales role, binds the workspace to a subject attribute, and attaches a redaction obligation. CUP evaluates the request first, then removes unauthorized fields before the renderer or agent receives the result.</div><div class="code">cup.register(dataResource({
+  id: 'crm.contacts', version: '3.2', sensitivity: 'confidential',
+  schema: contactSchema,
+  read: async ({ scope }) =&gt; db.contacts.findMany({
+    where: { workspaceId: scope.workspaceId },
+    select: { id: true, name: true, company: true, email: true }
+  })
+}));
+
+cup.policy.allow({
+  id: 'sales-read-team-contacts',
+  principal: role('sales'), operation: 'read',
+  resource: resource('crm.contacts'),
+  scope: { workspaceId: fromSubject('workspaceId') },
+  obligations: [redact(['phone', 'personalEmail'])]
+});
+
+const view = await cup.project({
+  subject: alice, goal: 'find contacts for the launch',
+  context: { workspaceId: 'acme', purpose: 'sales' }
+});</div><h3>14.3 Turn a capability into a generated form</h3><div class="card example-card"><strong>What it is:</strong> A calendar capability rendered into a form from its input schema.<br><strong>Purpose:</strong> Let a renderer create useful controls without a hand-built screen for every action.<br><strong>How CUP is applied:</strong> CUP projects the capability only when the user may inspect or execute it. The renderer reads the authorized input schema, builds controls, displays the declared external commitment, and attaches the confirmation obligation. The renderer creates presentation; CUP still decides whether the submitted event may be created.</div><div class="code">const capability = defineCapability({
+  id: 'calendar.create_event', operation: 'execute',
+  inputSchema: createEventSchema, outputSchema: eventSchema,
+  sideEffects: ['external_commitment'], risk: 'medium',
+  confirmation: 'explicit', reversibility: 'reversible'
+});
+cup.register(capability);
+
+const view = await cup.project({ subject: john, goal: 'schedule a team meeting' });
+const action = view.resources
+  .flatMap(r =&gt; r.capabilities)
+  .find(c =&gt; c.id === 'calendar.create_event');
+
+// A renderer chooses the visual form from action.inputSchema.
+return renderCapabilityForm(action, {
+  showSideEffects: true,
+  showConfirmation: action.obligations.includes('require_confirmation')
+});</div><h3>14.4 Protect a side-effecting tool</h3><div class="card example-card"><strong>What it is:</strong> An email sender with high risk, explicit confirmation, and idempotency.<br><strong>Purpose:</strong> Demonstrate the safe path for actions that contact other people or create external commitments.<br><strong>How CUP is applied:</strong> The capability declares its side effect, risk, confirmation mode, and need for an idempotency key. CUP checks the purpose, recipient limit, approval, schema, and exact input hash immediately before invoking the mail provider. If any condition changes, execution is denied and the adapter is never called.</div><div class="code">cup.register(defineCapability({
+  id: 'mail.send', operation: 'execute', inputSchema: mailSchema,
+  outputSchema: receiptSchema, sideEffects: ['external_message'],
+  risk: 'high', confirmation: 'explicit', idempotency: 'required',
+  handler: async (input, ctx) =&gt; mailProvider.send(input, ctx.idempotencyKey)
+}));
+
+cup.policy.allow({
+  id: 'john-send-job-outreach', principal: subject('user:john'),
+  operation: 'execute', resource: capability('mail.send'),
+  conditions: [purposeIs('job_outreach'), recipientCountAtMost(20)],
+  obligations: [requireConfirmation('explicit'), writeReceipt()]
+});
+
+// The executor, not the button, is the security boundary.
+const receipt = await cup.execute({
+  subject: john, capability: 'mail.send',
+  input: { from: 'john@example.com', to: recipients, body },
+  purpose: 'job_outreach', confirmation: userConfirmation,
+  idempotencyKey: crypto.randomUUID(), context
+});</div><h3>14.5 Build a read-only personal assistant</h3><div class="card example-card"><strong>What it is:</strong> A personal assistant limited to an authorized view of notes and briefing data.<br><strong>Purpose:</strong> Give an agent enough information to be useful while withholding the user’s full registry and write actions.<br><strong>How CUP is applied:</strong> The user’s goal and purpose become projection inputs. CUP returns readable note fields and only the capabilities allowed for a personal briefing. The agent receives that bounded view instead of the host registry. Even a read operation passes through CUP so field filters and current policy remain effective.</div><div class="code">const authorized = await cup.project({
+  subject: assistantFor(john),
+  goal: 'prepare my morning briefing',
+  context: { purpose: 'personal_briefing', channel: 'telegram' }
+});
+
+// The agent sees schemas and permitted actions, not the whole registry.
+const answer = await agent.run({
+  instruction: 'Prepare the briefing from the authorized view.',
+  tools: authorized.resources.flatMap(r =&gt; r.capabilities),
+  data: authorized.resources.filter(r =&gt; r.visibility === 'readable')
+});
+
+// Read actions still pass through the executor for field redaction.
+const notes = await cup.read({
+  subject: assistantFor(john), resource: 'notes.john',
+  fields: ['title', 'body'], context: { purpose: 'personal_briefing' }
+});</div><h3>14.6 Share a capability with attenuation</h3><div class="card example-card"><strong>What it is:</strong> A user grants an agent a narrower version of a search capability.<br><strong>Purpose:</strong> Demonstrate safe delegation without handing the agent the user’s full authority.<br><strong>How CUP is applied:</strong> CUP records the delegator, recipient, capability, purpose, expiration, fields, and allowed operations. The effective policy is the intersection of the original grant and the attenuation. At execution, CUP verifies the delegation chain and refuses any input that exceeds those limits.</div><div class="code">const grant = await cup.delegate({
+  from: john,
+  to: subject('agent:research'),
+  capability: 'crm.contacts.search',
+  attenuation: {
+    scope: { workspaceId: 'acme', fields: ['name', 'company'] },
+    purpose: 'market_research', expiresIn: '30m',
+    operations: ['execute']
+  }
+});
+
+// Effective authority is the intersection of all grants.
+// The delegated agent cannot widen fields, purpose, time, or operations.
+await cup.execute({
+  subject: subject('agent:research'), capability: 'crm.contacts.search',
+  delegation: grant, input: { query: 'healthcare startups' }, context
+});</div><h3>14.7 Publish CUP capabilities through MCP</h3><div class="card example-card"><strong>What it is:</strong> A CUP host exposes its authorized resources and tools as an MCP server.<br><strong>Purpose:</strong> Make the library interoperable with MCP clients while keeping CUP as the permission authority.<br><strong>How CUP is applied:</strong> The server authenticates the MCP session, builds a subject-specific projection, and maps only that projection to MCP resources and tools. On <span class="badge">tools/call</span>, the adapter resolves the MCP name, validates arguments, invokes <span class="badge">cup.execute()</span>, and writes a receipt. MCP changes the wire format; it does not bypass CUP.</div><div class="code">import { createMCPServer } from '@capability-ui/mcp';
+
+const server = createMCPServer({
+  name: 'john-workspace',
+  cup,
+  authenticate: async request =&gt; oidc.verify(request),
+  transports: ['streamable_http', 'stdio']
+});
+
+// resources/list, resources/read, tools/list, and tools/call
+// are generated from the session's authorized CUP projection.
+await server.listen({ http: { port: 8787, path: '/mcp' } });</div><p>The MCP server must not call <span class="badge">registry.listAll()</span> and pass the result to the client. Its handlers call <span class="badge">cup.project()</span> for listing and <span class="badge">cup.execute()</span> for invocation.</p><h3>14.8 Consume an MCP server through the same library</h3><div class="card example-card"><strong>What it is:</strong> A local CUP host mounts tools from another MCP server under a namespace.<br><strong>Purpose:</strong> Combine local policy with remote capabilities without treating a remote tool as trusted by default.<br><strong>How CUP is applied:</strong> The MCP client adapter imports remote schemas as namespaced capabilities. The local policy engine decides whether they are discoverable, inspectable, or executable for this subject and purpose. The local executor rechecks the request and constrains the remote call before forwarding it.</div><div class="code">import { connectMCP } from '@capability-ui/mcp-client';
+
+const remote = await connectMCP({
+  url: 'https://tools.example.com/mcp',
+  subject: john,
+  auth: oidcToken,
+  purpose: 'team_planning'
+});
+
+// Remote tools enter the local registry as namespaced capabilities.
+await cup.mount(remote, { namespace: 'company_tools' });
+const view = await cup.project({ subject: john, goal: 'plan the launch' });
+const result = await cup.execute({
+  subject: john, capability: 'company_tools.release.create_plan',
+  input: { project: 'launch-2027' }, context
+});</div><h3>14.9 Subscribe to authorized changes</h3><div class="card example-card"><strong>What it is:</strong> A client subscribes to project updates and rechecks access for every event.<br><strong>Purpose:</strong> Prevent a previously authorized subscription from becoming a data leak after revocation.<br><strong>How CUP is applied:</strong> CUP authorizes the initial subscription, but does not treat that decision as permanent. Each event is checked against the current policy and resource version. Allowed updates reach the renderer; revoked access produces removal or invalidation instead of leaking the new data.</div><div class="code">const subscription = await cup.subscribe({
+  subject: john, resource: 'projects.acme',
+  events: ['updated'], context
+});
+
+subscription.on('event', async event =&gt; {
+  // Re-authorize every event. Revocation produces 'access_removed'.
+  const decision = await cup.authorize({
+    subject: john, operation: 'read', resource: event.resource,
+    context
+  });
+  if (decision.effect === 'allow') renderer.update(event.data, decision);
+  else renderer.remove(event.resource);
+});</div><h3>14.10 Test the entire boundary</h3><div class="card example-card"><strong>What it is:</strong> An integration test that attempts to execute a hidden, unauthorized mail capability.<br><strong>Purpose:</strong> Turn the security promise into an executable contract.<br><strong>How CUP is applied:</strong> The test checks both layers: projection does not disclose the capability, and execution independently evaluates the forged request. The expected denial is meaningful only when the mail adapter remains untouched, proving that the enforcement boundary is outside the generated UI.</div><div class="code">it('cannot execute a hidden or unauthorized capability', async () =&gt; {
+  const view = await cup.project({ subject: otherUser, goal: 'send mail' });
+  expect(view.resources.some(r =&gt; r.ref.id === 'mail.send')).toBe(false);
+
+  await expect(cup.execute({
+    subject: otherUser, capability: 'mail.send',
+    input: { to: ['victim@example.com'], body: 'hello' }, context
+  })).rejects.toMatchObject({ code: 'CUP_NOT_AUTHORIZED' });
+
+  expect(mailProvider.send).not.toHaveBeenCalled();
+});</div><h3>14.11 Read authorized data at runtime</h3><div class="card example-card"><strong>What it is:</strong> A user asks an agent to search and read a bounded set of records.<br><strong>Purpose:</strong> Show the runtime path after setup: discover what exists, inspect the schema, query within scope, and receive redacted data.<br><strong>How CUP is applied:</strong> The agent never reads the database directly. CUP authorizes discovery and reading separately, constrains the query fields and workspace, applies pagination limits, and returns a receipt for the read operation.</div><div class="code">const visible = await cup.discover({
+  subject: john, purpose: 'personal_search', context
+});
+const contacts = visible.find(r =&gt; r.ref.id === 'crm.contacts');
+
+const page = await cup.read({
+  subject: john,
+  resource: 'crm.contacts',
+  query: { search: 'Acme', cursor: null, limit: 25 },
+  fields: ['id', 'name', 'company'],
+  scope: { workspaceId: 'acme' },
+  purpose: 'personal_search', context
+});
+
+console.log(page.items);       // filtered records only
+console.log(page.nextCursor);  // opaque cursor, if more data exists
+console.log(page.receiptId);   // audit reference</div><h3>14.12 Call a capability through prepare, confirm, execute</h3><div class="card example-card"><strong>What it is:</strong> A calendar action is selected from the authorized view and executed after the user reviews it.<br><strong>Purpose:</strong> Show the complete call protocol instead of stopping at capability registration.<br><strong>How CUP is applied:</strong> <span class="badge">prepare()</span> validates the schema and produces a normalized preview. The UI displays the exact side effect. Confirmation is bound to that normalized input. <span class="badge">execute()</span> rechecks policy and rejects a changed payload.</div><div class="code">const prepared = await cup.prepare({
+  subject: john,
+  capability: 'calendar.create_event',
+  input: { title: 'Launch review', start, end, attendees },
+  purpose: 'team_planning', context
+});
+
+// Renderer shows prepared.preview and prepared.obligations.
+const confirmation = await user.confirm({
+  title: prepared.preview.title,
+  changes: prepared.preview.changes,
+  risks: prepared.obligations
+});
+
+const receipt = await cup.execute({
+  ...prepared.request,
+  confirmation,                         // bound to input hash
+  idempotencyKey: 'launch-review-v1'
+});
+if (receipt.status === 'succeeded') showSuccess(receipt);
+else showActionableError(receipt.decision.reason);</div><h3>14.13 A single agent with a bounded action loop</h3><div class="card example-card"><strong>What it is:</strong> An agent plans a multi-step task, such as preparing a meeting brief, using only capabilities in its authorized projection.<br><strong>Purpose:</strong> Show how CUP constrains an agent throughout a task rather than authorizing the entire task once at the beginning.<br><strong>How CUP is applied:</strong> The host creates a projection for the goal. The agent proposes one step at a time. Each step is checked against the current policy, resource version, purpose, and budget. A denied step is returned to the agent as a typed result, not silently substituted with a broader capability.</div><div class="code">const view = await cup.project({
+  subject: assistantFor(john),
+  goal: 'prepare tomorrow meeting brief',
+  context: { purpose: 'meeting_brief', budget: { reads: 20, writes: 0 } }
+});
+
+let state = { goal, facts: [], receipts: [] };
+for (let step = 0; step &lt; 8; step++) {
+  const proposal = await agent.planNext({ state, authorizedView: view });
+  if (proposal.kind === 'final') break;
+
+  const result = await cup.execute({
+    subject: assistantFor(john), capability: proposal.capability,
+    input: proposal.input, purpose: 'meeting_brief', context,
+    budget: state.budget
+  });
+  state = reduce(state, result);
+  if (result.status === 'denied') {
+    state = addConstraint(state, result.decision.reasonCode);
+  }
+}
+return agent.summarize(state);</div><h3>14.14 Multi-agent research team</h3><div class="card example-card"><strong>What it is:</strong> A coordinator agent delegates narrow research tasks to specialist agents and combines their outputs.<br><strong>Purpose:</strong> Demonstrate that agents can collaborate without sharing the user’s entire data set or unrestricted tools.<br><strong>How CUP is applied:</strong> The coordinator receives a broad but bounded authority. It creates attenuated grants for search-only workers with separate purposes and expiration times. Each worker is a distinct principal. Their outputs are treated as untrusted data, and the coordinator cannot grant permissions it does not possess.</div><div class="code">const coordinator = subject('agent:research-coordinator');
+const workers = await Promise.all([
+  cup.delegate({ from: john, to: subject('agent:market-worker'),
+    capability: 'web.search', attenuation: {
+      purpose: 'market_scan', expiresIn: '15m', operations: ['execute'],
+      scope: { domains: ['example.com', 'public-data.org'] }
+    }}),
+  cup.delegate({ from: john, to: subject('agent:notes-worker'),
+    capability: 'notes.read', attenuation: {
+      purpose: 'market_scan', expiresIn: '15m', operations: ['read'],
+      scope: { fields: ['title', 'body'], notebook: 'research' }
+    }})
+]);
+
+const findings = await Promise.all(workers.map(grant =&gt; worker.run({
+  grant, goal: 'find evidence for the market scan',
+  call: (capability, input) =&gt; cup.execute({
+    subject: grant.to, delegation: grant, capability, input,
+    purpose: 'market_scan', context
+  })
+})));
+return coordinator.synthesize({ findings: sanitizeUntrusted(findings) });</div><h3>14.15 Agent using a remote MCP server</h3><div class="card example-card"><strong>What it is:</strong> An agent uses a remote MCP server to create a project plan while CUP remains the local authority for what the agent may invoke.<br><strong>Purpose:</strong> Show how MCP fits into an agent loop without turning remote tool discovery into automatic trust.<br><strong>How CUP is applied:</strong> Remote tools are mounted under a namespace, inspected, and projected like local capabilities. The agent sees only permitted tools. Every remote call passes local policy, input validation, confirmation rules, and receipt creation before the MCP adapter forwards it.</div><div class="code">const remote = await connectMCP({
+  url: 'https://planning.example/mcp', auth: oidcToken,
+  subject: assistantFor(john), purpose: 'project_planning'
+});
+await cup.mount(remote, { namespace: 'planning_remote' });
+
+const view = await cup.project({
+  subject: assistantFor(john), goal: 'create a launch plan',
+  context: { purpose: 'project_planning' }
+});
+const plan = await agent.plan({ goal, tools: view.capabilities });
+
+for (const action of plan.actions) {
+  const receipt = await cup.execute({
+    subject: assistantFor(john), capability: action.capability,
+    input: action.input, purpose: 'project_planning', context
+  });
+  if (receipt.status !== 'succeeded') return recoverFromDecision(receipt);
+}</div><h3>14.16 Adaptive interface for different principals</h3><div class="card example-card"><strong>What it is:</strong> The same product renders different controls for an owner, a read-only collaborator, and a public visitor.<br><strong>Purpose:</strong> Show the practical GenUI result of CUP: one resource model, many interfaces, with differences driven by policy rather than hard-coded role screens.<br><strong>How CUP is applied:</strong> Each principal receives a different projection. The renderer displays read controls, edit controls, or an existence-only summary according to the returned capabilities. If a user changes roles while the page is open, the next execution is checked against the new policy.</div><div class="code">const view = await cup.project({
+  subject: currentSubject,
+  goal: 'work with project acme', context
+});
+
+return render(view, {
+  resource: 'projects.acme',
+  componentFor(resource) {
+    if (resource.capabilities.some(c =&gt; c.id === 'projects.update'))
+      return ProjectEditor;
+    if (resource.visibility === 'readable')
+      return ProjectReader;
+    if (resource.visibility === 'listed')
+      return ProjectSummary;
+    return null;
+  }
+});</div><div class="note" style="margin-top:22px"><strong>Implementation rule:</strong> every example uses the same core sequence: register, authorize, project, compose, confirm when required, re-authorize, execute, and receipt. MCP changes the wire protocol, not that sequence.</div></div></section>
+<section class="section" id="future-blog"><div class="wrap blog"><div class="kicker">Essay · CUP-002</div><h2>What changes when software can assemble around the work</h2><p class="meta">A practical look at generated interfaces, outside assistants, and the permissions that make them safe to use</p><p class="lead">Imagine opening your company’s project system and typing, “Find the contracts that might renew in the next ninety days, compare them with recent support tickets, draft a note to the account owners, and show me the note before anyone sends it.” Today, that request would probably take you through several screens and a fair amount of copying and pasting. A newer kind of application could gather the relevant records, arrange the comparison, draft the note, and stop at the point where your approval matters.</p><p>That sounds convenient, but convenience is not the interesting part. The hard question is how the application decides what the software may see and do while it is putting that workspace together. If an assistant can search contracts, read support tickets, and send messages, the product needs a clear way to separate those three permissions. It also needs to check the final message after the assistant writes it, because the message is the thing that will actually leave the system.</p><div class="pull">The interface can change from one request to the next. The rules around private data and consequential actions still need to stay clear.</div><h3>The screen is no longer the whole product</h3><p>Most product teams begin with screens because screens give the work a visible shape. A project has a details page. It has an edit form. It has a list of recent activity. The team connects buttons to server endpoints, adds role checks, and ships something people can learn.</p><p>That approach remains useful. People need stable places to return to, and repeated work deserves a familiar path. The limits show up when a request cuts across several parts of the product. A sales manager may want a list of at-risk renewals with the relevant ticket history beside each contract. A support lead may want the same information grouped by customer and filtered to accounts with an open escalation. Building a new screen for every useful combination would turn the product into a growing collection of special cases.</p><p>When the application describes its data and actions in a common format, it can assemble a temporary workspace instead. The workspace might contain a table, a comparison view, a search control, and a draft message. Another request might need a timeline and a form. The application chooses those pieces from what the current task requires and what the current user may use.</p><h3>Permissions need to describe the actual work</h3><p>A role such as “manager” rarely tells the whole story. The manager may be allowed to read contracts in one business unit but not another. They may see a ticket’s status and owner without seeing the private conversation inside it. They may draft an email but need to approve it before the system sends it. A contractor may search public records but have no access to the company’s customer database.</p><p>CUP gives the application separate decisions for these cases. It can ask whether someone may discover that a record exists, inspect its structure, read its contents, change it, run an action, share it, or give a limited permission to another assistant. Each decision can include the records it covers, the reason for access, an expiration time, and extra requirements such as confirmation.</p><p>Those distinctions affect what the person sees. A visitor might see a project name. A team member might read its status and recent updates. The owner might edit it. An assistant might see only the fields needed to prepare a meeting brief. The screen does not guess at these differences from a role name. It receives the application’s answer and builds the appropriate controls.</p><h3>Generated screens need a real security boundary</h3><p>A generated interface can make a forbidden action look completely reasonable. An assistant might add a “Send to all customers” button because the request sounded like a campaign, even though the user only has permission to contact a few accounts. Hiding that button helps, but it does not protect the action. Someone could call the endpoint directly, and a model could still propose the call without showing a button at all.</p><p>That is why the application needs two related steps. First, it creates a filtered view of the records and actions that the person or assistant may use for the current task. This gives the interface enough information to be useful without handing over the entire application. Then, when someone proposes an action, the application checks the exact action and its input at the moment it would create a side effect.</p><p>For an email, the second check includes the recipients, subject, body, sender, purpose, and current policy. The application can require a preview and a confirmation tied to that exact message. If the user’s access changes while the draft sits on the screen, the send attempt goes through the new rules. The generated screen helps with interaction. The application remains responsible for the decision.</p><h3>The assistant should remain replaceable</h3><p>This design does not require CUP to become an assistant framework. That would create another set of problems rather than solve the one above. Different teams already use graph runtimes, hosted assistants, vendor SDKs, custom workflows, and ordinary application code. Those systems make different choices about planning, memory, retries, and model providers.</p><p>CUP can sit around any of them. The application can list an existing assistant as a resource with an identity, an endpoint, supported tasks, input and output schemas, cost information, and a risk level. A policy can decide who may call that assistant. When the assistant calls a data source or a tool, the application evaluates the assistant as its own actor, with its own limited permissions.</p><p>That distinction matters in a research team. A coordinator might receive permission to search several sources and ask two specialist assistants for help. One specialist may search public websites for fifteen minutes. Another may read two fields from a research notebook. Neither should receive the coordinator’s entire data access. CUP can issue each assistant a short-lived grant for a specific job, then record which assistant used it.</p><h3>Why the last check matters more than the first one</h3><p>Applications often authorize access when a session begins and assume the rest will follow. That assumption breaks as soon as the work takes time. A record can change. Someone can remove a user from a workspace. An administrator can disable a tool. An assistant can turn a harmless request into a much broader one.</p><p>A safer flow prepares a concrete action and shows its consequences before asking for approval. The application creates a stable fingerprint of the proposed input, so the approval applies to the message, file change, purchase, or appointment that the user actually reviewed. Immediately before the provider runs, the application checks the current rules again. It writes a receipt whether the action succeeds or gets denied.</p><p>This may feel like extra machinery for a small feature. For actions that send messages, move money, change records, or expose private information, the machinery is the feature. It gives the user a meaningful point of control and gives the team a way to understand what happened later.</p><h3>What changes for product and engineering teams</h3><p>Teams still design screens and workflows. They spend more time making the underlying data and actions explicit, because those definitions become useful to every way of using the product. A web client can render them as forms and tables. A mobile client can render a focused task view. A voice client can ask for the missing detail. An outside assistant can plan a sequence of reads and actions.</p><p>The work usually begins with a few concrete questions:</p><ul><li>What information does the product expose, and which fields carry extra risk?</li><li>Which actions change data or affect somebody outside the system?</li><li>Who can find, read, change, run, share, or delegate each one?</li><li>What must the application show before a person approves an action?</li><li>What should the receipt contain when a request succeeds, fails, or gets denied?</li></ul><p>These questions lead to better boundaries even when a product never generates a screen. They make endpoint behavior easier to inspect, give policy reviews something concrete to discuss, and reduce the temptation to treat hidden buttons as security.</p><h3>Why a shared protocol helps</h3><p>Companies already have pieces of this system. They have login providers, databases, policy engines, JSON schemas, tool protocols, workflow runtimes, and interface libraries. The trouble starts at the seams. One team describes permissions as roles, another uses scopes, and a third relies on a prompt instruction. The web app filters one set of fields while the assistant receives another. A remote tool gets trusted because it appeared in a discovery response.</p><p>A shared protocol can give those systems a common conversation. The database describes a resource. The tool describes its input, output, side effects, and risk. The policy layer decides what the current user or assistant may use. The interface receives a filtered view. The execution layer checks the final request and writes a receipt. MCP or another wire format can carry the messages, but the permission decision remains with the application that owns the data.</p><p>That is the part of this idea I find most useful. It does not ask teams to choose one assistant vendor or throw away the software they already have. It asks them to make the application’s data, actions, and rules explicit enough that different clients can use them without inventing their own security model.</p><h3>A future that still feels like software</h3><p>The point is not to replace every screen with a conversation. Some work benefits from a stable dashboard, a familiar form, or a carefully designed workflow. Other work benefits from an interface that appears around a question and disappears when the task ends. Products should support both.</p><p>The lasting change is that the application can describe what it knows and what it can do independently from one particular screen. A person, a mobile client, a voice interface, and an outside assistant can ask for different views of the same system. The application can adapt the presentation while keeping data access and side effects under explicit control.</p><p>CUP is a proposal for that boundary. It treats assistants as outside participants, treats generated interfaces as clients, and puts the hard decision where it belongs: next to the data and immediately before the action.</p></div></section>
+</main>
+<footer class="footer"><div class="wrap"><strong>Capability UI Protocol · CUP-001</strong><p>Full library design specification · Draft v0.1 · Published at future.johnshearin.dev</p></div></footer>
+<script>
+(function(){var root=document.documentElement,b=document.getElementById('theme'),s=localStorage.getItem('cup-theme');if(s)root.setAttribute('data-theme',s);function refresh(){b.textContent=root.getAttribute('data-theme')==='dark'?'Light mode':'Dark mode'}b.addEventListener('click',function(){var n=root.getAttribute('data-theme')==='dark'?'light':'dark';root.setAttribute('data-theme',n);localStorage.setItem('cup-theme',n);refresh()});refresh()})();
+</script>
+</body></html>

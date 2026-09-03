@@ -133,7 +133,10 @@ const result = await cup.execute({
 });
 ```
 
-## Documentation site
+## Specification
+
+The complete specification is versioned with the repository in [`SPECIFICATION.md`](SPECIFICATION.md) and [`specification/index.html`](specification/index.html). The Docusaurus site serves it at `/specification/`.
+
 
 The comprehensive developer documentation lives in `docs/` and builds with Docusaurus 3.
 
