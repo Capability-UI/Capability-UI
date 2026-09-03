@@ -33,6 +33,7 @@ export interface Capability extends Resource {
   type: 'capability'; operation: Operation; inputSchema: JsonSchema; outputSchema: JsonSchema;
   sideEffects: string[]; risk: Risk; confirmation: ConfirmationMode;
   idempotency: 'none' | 'supported' | 'required'; reversibility: 'reversible' | 'partially_reversible' | 'irreversible';
+  reverseCapability?: string;
   handler: (input: unknown, context: ExecutionContext) => Promise<unknown>;
 }
 export interface Policy {
@@ -193,12 +194,17 @@ export class CapabilityUI {
     if (decision.effect !== 'allow') return this.record({ status: 'denied', actor: request.subject, capability: capability.id, inputHash, decision });
     const requiresConfirmation = capability.confirmation !== 'none' || decision.obligations.some(obligation => obligation.type === 'preview_changes' || obligation.type === 'human_review' || obligation.type === 'require_confirmation');
     if (requiresConfirmation && (!request.confirmation || request.confirmation.inputHash !== inputHash || request.confirmation.confirmedBy !== request.subject.id)) return this.record({ status: 'denied', actor: request.subject, capability: capability.id, inputHash, decision: { ...decision, effect: 'deny', reasonCode: 'CONFIRMATION_REQUIRED' }, confirmation: request.confirmation });
-    try { const result = await capability.handler(request.input, { ...request.context, requestId: decision.requestId, idempotencyKey: request.idempotencyKey }); return this.record({ status: 'succeeded', actor: request.subject, capability: capability.id, inputHash, decision, resultSummary: result }); }
+    try { const result = await capability.handler(request.input, { ...request.context, requestId: decision.requestId, idempotencyKey: request.idempotencyKey }); return this.record({ status: 'succeeded', actor: request.subject, capability: capability.id, inputHash, decision, reversibleBy: capability.reversibility !== 'irreversible' ? capability.reverseCapability : undefined, resultSummary: result }); }
     catch (error) { return this.record({ status: 'failed', actor: request.subject, capability: capability.id, inputHash, decision: { ...decision, reasonCode: 'HANDLER_FAILED' }, resultSummary: { error: error instanceof Error ? error.message : 'unknown error' } }); }
   }
   async delegate(request: { from: Subject; to: Subject; capability: string; operations: Operation[]; scope?: Scope; purpose?: string; expiresInMs: number }): Promise<DelegationGrant> {
     const resource = this.resources.get(request.capability); if (!resource) throw new Error('CUP_RESOURCE_NOT_FOUND'); const d = await this.authorize({ subject: request.from, operation: 'delegate', resource, purpose: request.purpose, scope: request.scope, context: { purpose: request.purpose } }); if (d.effect !== 'allow') throw new Error(`CUP_NOT_AUTHORIZED:${d.reasonCode}`);
     const grant: DelegationGrant = { id: this.nonce(), from: request.from, to: request.to, capability: request.capability, operations: request.operations, scope: request.scope, purpose: request.purpose, expiresAt: new Date(this.clock().getTime() + request.expiresInMs).toISOString() }; this.delegations.set(grant.id, grant); return grant;
+  }
+  async reverse(receiptId: string, request: Omit<ExecutionRequest, 'capability' | 'input'> & { capability?: string }): Promise<Receipt> {
+    const original = this.receipts.all().find(receipt => receipt.id === receiptId);
+    if (!original?.reversibleBy) return this.record({ status: 'denied', actor: request.subject, capability: request.capability ?? 'unknown', inputHash: hash({ receiptId }), decision: this.denial({ ...request, capability: request.capability ?? 'unknown', input: { receiptId } }, 'RECEIPT_NOT_REVERSIBLE') });
+    return this.execute({ ...request, capability: request.capability ?? original.reversibleBy, input: { receiptId, original: original.resultSummary }, context: { ...request.context, purpose: request.purpose ?? 'reverse' } });
   }
   async subscribe(request: { subject: Subject; resource: string; events: string[]; context: RequestContext }): Promise<Subscription> {
     const resource = this.resources.get(request.resource); if (!resource) throw new Error('CUP_RESOURCE_NOT_FOUND');

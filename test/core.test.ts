@@ -245,3 +245,16 @@ test('uses injected clock and nonce providers', async () => {
   const decision = await cup.authorize({ subject: john, operation: 'read', resource: { id: 'missing' }, context: {} });
   assert.equal(decision.requestId, 'fixed-id');
 });
+
+test('executes a separately authorized reversal capability', async () => {
+  const cup = new CapabilityUI();
+  let reversed = false;
+  cup.register({ id: 'task.create', type: 'capability', version: '1', sensitivity: 'personal', schema: { type: 'object' }, operation: 'create', inputSchema: { type: 'object' }, outputSchema: { type: 'object' }, sideEffects: ['Creates a task'], risk: 'medium', confirmation: 'none', idempotency: 'required', reversibility: 'reversible', reverseCapability: 'task.delete', handler: async () => ({ taskId: 't1' }) });
+  cup.register({ id: 'task.delete', type: 'capability', version: '1', sensitivity: 'personal', schema: { type: 'object' }, operation: 'delete', inputSchema: { type: 'object' }, outputSchema: { type: 'object' }, sideEffects: ['Deletes a task'], risk: 'high', confirmation: 'none', idempotency: 'required', reversibility: 'irreversible', handler: async () => { reversed = true; return { deleted: true }; } });
+  cup.policy.allow({ id: 'create', principal: { id: john.id }, operation: 'execute', resource: { id: 'task.create' }, priority: 10 });
+  cup.policy.allow({ id: 'delete', principal: { id: john.id }, operation: 'execute', resource: { id: 'task.delete' }, priority: 10 });
+  const original = await cup.execute({ subject: john, capability: 'task.create', input: {}, idempotencyKey: 'create-1', context: {} });
+  const undone = await cup.reverse(original.id, { subject: john, idempotencyKey: 'delete-1', context: {} });
+  assert.equal(undone.status, 'succeeded');
+  assert.equal(reversed, true);
+});
