@@ -90,6 +90,17 @@ create table if not exists cup_prepared_actions (
   consumed_at timestamptz
 );
 
+create table if not exists cup_delegation_grants (
+  id text primary key,
+  from_subject_id text not null references cup_subjects(id),
+  to_subject_id text not null references cup_subjects(id),
+  capability_id text not null references cup_capabilities(resource_id),
+  operations jsonb not null,
+  scope jsonb,
+  purpose text,
+  expires_at timestamptz not null,
+  revoked_at timestamptz
+);
 create table if not exists cup_receipts (
   id uuid primary key,
   request_id uuid not null,

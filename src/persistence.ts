@@ -1,4 +1,4 @@
-import type { Policy, Receipt, Resource, Subject } from './runtime.js';
+import type { DelegationGrant, Policy, Receipt, Resource, Subject } from './runtime.js';
 
 export interface SqlClient {
   query<T = unknown>(sql: string, values?: readonly unknown[]): Promise<{ rows: T[] }>;
@@ -10,6 +10,10 @@ export interface CupPersistence {
   policies(): Promise<Policy[]>;
   appendReceipt(receipt: Receipt): Promise<void>;
   receipts(query?: { actorId?: string; capability?: string; status?: Receipt['status'] }): Promise<Receipt[]>;
+  appendDelegation(grant: DelegationGrant): Promise<void>;
+  delegations(subjectId?: string): Promise<DelegationGrant[]>;
+  savePreparedAction(action: { requestId: string; subjectId: string; capabilityId: string; inputHash: string; input: unknown; decision: unknown; policyVersion: string; expiresAt?: string }): Promise<void>;
+  preparedAction(requestId: string): Promise<{ requestId: string; subjectId: string; capabilityId: string; inputHash: string; input: unknown; decision: unknown; policyVersion: string; expiresAt?: string; consumedAt?: string } | undefined>;
 }
 
 export const CUP_POSTGRES_SCHEMA = /* sql */ `
@@ -71,6 +75,17 @@ create table if not exists cup_prepared_actions (
   expires_at timestamptz,
   consumed_at timestamptz
 );
+create table if not exists cup_delegation_grants (
+  id text primary key,
+  from_subject_id text not null references cup_subjects(id),
+  to_subject_id text not null references cup_subjects(id),
+  capability_id text not null references cup_capabilities(resource_id),
+  operations jsonb not null,
+  scope jsonb,
+  purpose text,
+  expires_at timestamptz not null,
+  revoked_at timestamptz
+);
 create table if not exists cup_receipts (
   id uuid primary key,
   request_id uuid not null,
@@ -123,6 +138,11 @@ export class PostgresPersistence implements CupPersistence {
     const result = await this.db.query<any>('select id, request_id, status, actor_id, actor_type, capability_id, input_hash, decision, result_summary, created_at from cup_receipts where ($1::text is null or actor_id = $1) and ($2::text is null or capability_id = $2) and ($3::text is null or status = $3) order by created_at desc', [query.actorId ?? null, query.capability ?? null, query.status ?? null]);
     return result.rows.map(row => ({ id: row.id, status: row.status, actor: { id: row.actor_id, type: row.actor_type }, capability: row.capability_id, inputHash: row.input_hash, decision: row.decision, resultSummary: row.result_summary ?? undefined, createdAt: new Date(row.created_at).toISOString() }));
   }
+
+  async appendDelegation(grant: DelegationGrant): Promise<void> { await this.db.query('insert into cup_delegation_grants (id, from_subject_id, to_subject_id, capability_id, operations, scope, purpose, expires_at) values ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7,$8)', [grant.id, grant.from.id, grant.to.id, grant.capability, JSON.stringify(grant.operations), JSON.stringify(grant.scope ?? null), grant.purpose ?? null, grant.expiresAt]); }
+  async delegations(subjectId?: string): Promise<DelegationGrant[]> { const result = await this.db.query<any>('select id, from_subject_id, to_subject_id, capability_id, operations, scope, purpose, expires_at from cup_delegation_grants where revoked_at is null and expires_at > now() and ($1::text is null or to_subject_id = $1)', [subjectId ?? null]); return result.rows.map(row => ({ id: row.id, from: { id: row.from_subject_id, type: 'user', authenticated: true, attributes: {} }, to: { id: row.to_subject_id, type: 'agent', authenticated: true, attributes: {} }, capability: row.capability_id, operations: row.operations, scope: row.scope ?? undefined, purpose: row.purpose ?? undefined, expiresAt: new Date(row.expires_at).toISOString() })); }
+  async savePreparedAction(action: { requestId: string; subjectId: string; capabilityId: string; inputHash: string; input: unknown; decision: unknown; policyVersion: string; expiresAt?: string }): Promise<void> { await this.db.query('insert into cup_prepared_actions (request_id, subject_id, capability_id, input_hash, input_json, decision, policy_version, expires_at) values ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7,$8) on conflict (request_id) do update set input_hash=$4,input_json=$5::jsonb,decision=$6::jsonb,policy_version=$7,expires_at=$8', [action.requestId, action.subjectId, action.capabilityId, action.inputHash, JSON.stringify(action.input), JSON.stringify(action.decision), action.policyVersion, action.expiresAt ?? null]); }
+  async preparedAction(requestId: string) { const result = await this.db.query<any>('select request_id, subject_id, capability_id, input_hash, input_json, decision, policy_version, expires_at, consumed_at from cup_prepared_actions where request_id = $1', [requestId]); const row = result.rows[0]; return row ? { requestId: row.request_id, subjectId: row.subject_id, capabilityId: row.capability_id, inputHash: row.input_hash, input: row.input_json, decision: row.decision, policyVersion: row.policy_version, expiresAt: row.expires_at ? new Date(row.expires_at).toISOString() : undefined, consumedAt: row.consumed_at ? new Date(row.consumed_at).toISOString() : undefined } : undefined; }
 }
 
 export function subjectFromRow(row: { id: string; subject_type: Subject['type']; authenticated: boolean; attributes: Record<string, unknown> }): Subject {

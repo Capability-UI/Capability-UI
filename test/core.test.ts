@@ -220,6 +220,10 @@ test('postgres persistence uses parameterized receipt writes', async () => {
   assert.match(CUP_POSTGRES_SCHEMA, /create table if not exists cup_prepared_actions/);
 });
 
+test('postgres schema includes durable delegation grants', () => {
+  assert.match(CUP_POSTGRES_SCHEMA, /create table if not exists cup_delegation_grants/);
+});
+
 test('rejects required-idempotency actions without a key', async () => {
   const cup = new CapabilityUI();
   cup.register(sendMail(async () => ({ sent: true })));
@@ -227,6 +231,15 @@ test('rejects required-idempotency actions without a key', async () => {
   const receipt = await cup.execute({ subject: john, capability: 'mail.send', input: { to: ['a@example.com'], body: 'Hi' }, context: {} });
   assert.equal(receipt.status, 'denied');
   assert.equal(receipt.decision.reasonCode, 'IDEMPOTENCY_KEY_REQUIRED');
+});
+
+test('returns the same receipt for a duplicate idempotency key', async () => {
+  const cup = new CapabilityUI(); let calls = 0;
+  cup.register({ ...sendMail(async () => { calls++; return { sent: true }; }), confirmation: 'none' });
+  cup.policy.allow({ id: 'john-mail', principal: { id: john.id }, operation: 'execute', resource: { id: 'mail.send' }, priority: 10 });
+  const request = { subject: john, capability: 'mail.send', input: { to: ['a@example.com'], body: 'Hi' }, idempotencyKey: 'same-key', context: {} } as const;
+  const first = await cup.execute(request); const second = await cup.execute(request);
+  assert.equal(first.id, second.id); assert.equal(calls, 1);
 });
 
 test('MCP exposes prompts and session metadata', async () => {
