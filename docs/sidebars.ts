@@ -26,7 +26,7 @@ const sidebars: SidebarsConfig = {
     {
       type: 'category',
       label: 'Architecture and persistence',
-      items: ['architecture/data-model'],
+      items: ['architecture/source-architecture', 'architecture/data-model'],
     },
     {
       type: 'category',

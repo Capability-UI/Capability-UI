@@ -6,7 +6,7 @@ CUP does not create, host, schedule, or manage agents. It can register an existi
 
 ## Implementation status
 
-Version `0.1.2` is a dependency-free, in-memory protocol runtime. It implements the CUP semantic core: resource and capability registration, deterministic policy evaluation, authorized views, field redaction, guarded execution, confirmation hashes, subject-bound action tokens, delegation, subscriptions, MCP JSON-RPC mapping, adapter contracts, and receipts.
+Version `0.2.0` is a dependency-free protocol runtime with an in-memory reference engine and PostgreSQL persistence primitives. It implements the CUP semantic core: resource and capability registration, deterministic policy evaluation, authorized views, field redaction, guarded execution, confirmation hashes, subject-bound action tokens, delegation, subscriptions, MCP JSON-RPC mapping, adapter contracts, and receipts.
 
 CUP does not currently persist resources or policies to SQL by itself. The host application owns database schemas, migrations, policy loading, transaction boundaries, durable receipt storage, authentication, and provider handlers. The Docusaurus site includes a PostgreSQL schema and repository design in [CUP data model](docs/docs/architecture/data-model.md).
 

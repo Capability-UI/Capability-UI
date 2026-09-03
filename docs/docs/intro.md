@@ -46,7 +46,7 @@ sequenceDiagram
 
 ## Version and status
 
-This documentation targets the `0.1.2` TypeScript reference implementation. The semantic core is dependency-free and runs in memory. Authentication, identity proofing, SQL persistence, durable policy storage, durable receipts, transport hosting, and external agent runtimes remain host integrations. The [CUP data model](architecture/data-model) page shows how to persist the protocol objects in PostgreSQL.
+This documentation targets the `0.2.0` TypeScript reference implementation. The semantic core is dependency-free and runs in memory. Authentication, identity proofing, SQL persistence, durable policy storage, durable receipts, transport hosting, and external agent runtimes remain host integrations. The [CUP data model](architecture/data-model) page shows how to persist the protocol objects in PostgreSQL.
 
 ## A complete runtime shape
 

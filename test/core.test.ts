@@ -7,7 +7,10 @@ import {
   type Subject,
   type Receipt,
   defineCapability,
-  createMCPServer
+  createMCPServer,
+  MemoryActionTokenService,
+  PostgresPersistence,
+  CUP_POSTGRES_SCHEMA,
 } from '../src/index.js';
 
 const john: Subject = {
@@ -195,4 +198,22 @@ test('queries in-memory receipts by actor and capability', async () => {
   await cup.read({ subject: john, resource: 'notes.john', context: {} });
   const receipts = cup.receipts.find?.({ actorId: john.id, capability: 'notes.john' });
   assert.equal(receipts?.length, 1);
+});
+
+test('action token service binds audience and policy version', () => {
+  const service = new MemoryActionTokenService();
+  const now = new Date();
+  const token = service.issue({ capabilityId: 'mail.send', subjectId: john.id, policyVersion: 'policy-1', audience: 'web', issuedAt: now.toISOString(), expiresAt: new Date(now.getTime() + 60_000).toISOString() });
+  assert.doesNotThrow(() => service.verify(token, { capabilityId: 'mail.send', subjectId: john.id, policyVersion: 'policy-1', audience: 'web' }));
+  assert.throws(() => service.verify(token, { capabilityId: 'mail.send', subjectId: john.id, policyVersion: 'policy-2', audience: 'web' }), /INVALID_ACTION_TOKEN/);
+});
+
+test('postgres persistence uses parameterized receipt writes', async () => {
+  const calls: Array<{ sql: string; values?: readonly unknown[] }> = [];
+  const db = { query: async <T>(sql: string, values?: readonly unknown[]) => { calls.push({ sql, values }); return { rows: [] as T[] }; } };
+  const store = new PostgresPersistence(db);
+  await store.appendReceipt({ id: 'r1', status: 'denied', actor: john, capability: 'mail.send', inputHash: 'hash', decision: { requestId: 'req', effect: 'deny', reasonCode: 'NO_MATCHING_ALLOW', matchedPolicies: [], obligations: [], policyVersion: 'policy-1' }, createdAt: new Date().toISOString() });
+  assert.match(calls[0]!.sql, /values \(\$1,\$2/);
+  assert.equal(calls[0]!.values?.[0], 'r1');
+  assert.match(CUP_POSTGRES_SCHEMA, /create table if not exists cup_prepared_actions/);
 });
