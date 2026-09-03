@@ -127,6 +127,21 @@ const result = await cup.execute({
 });
 ```
 
+## Documentation site
+
+The comprehensive developer documentation lives in `docs/` and builds with Docusaurus 3.
+
+```bash
+cd docs
+npm install
+npm run start       # local development server
+npm run typecheck
+npm run build       # production static site
+npm run serve       # serve the production build locally
+```
+
+The docs cover the complete runtime flow, resource and capability modeling, authorization, scopes, redaction, confirmations, delegation, external agent runtimes, MCP, receipts, subscriptions, testing, and production hardening.
+
 ## Development
 
 ```bash
