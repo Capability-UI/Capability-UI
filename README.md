@@ -13,17 +13,26 @@ CUP does not currently persist resources or policies to SQL by itself. The host 
 ## Implemented features
 
 - Typed resource and capability contracts
-- Separate `discover`, `inspect`, `read`, `execute`, and `delegate` operations
-- Deny-by-default policy evaluation
+- Separate `discover`, `inspect`, `read`, `execute`, `share`, and `delegate` operations
+- Deny-by-default policy evaluation (`denyByDefault()` alias makes intent explicit)
 - Explicit deny precedence at equal priority
 - Subject matching by ID, role, type, or wildcard
 - Authorized projections for agents and renderers
 - Schema and side-effect metadata on capabilities
 - `prepare()` and `execute()` for guarded actions
 - Confirmation binding to an input hash
+- Field-level `writable` permissions on authorized views
+- `Projector.redact()` to apply field obligations outside the read path
 - Receipt generation through an in-memory or injected receipt sink
 - Delegation grants with purpose, expiration, operation, and scope limits
+- `revokeGrant()` to invalidate a grant before it expires (in-memory and PostgreSQL)
+- `resources/templates/list` MCP method for inspectable resource schemas
+- `validDuring` time-window support in PostgreSQL persistence
 - No dependency on an agent framework, UI framework, database, or MCP implementation
+
+## Learn by example
+
+The [from zero to production](docs/docs/build/from-zero-to-production.md) walkthrough builds a real CUP system step by step: one user, one resource, full authority -- then an external agent extends it via MCP, new principals are created, policies narrow their access, and the audit trail grows with every operation.
 
 ## Install
 

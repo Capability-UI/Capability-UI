@@ -20,6 +20,20 @@ sql/
 └── 001_cup_initial.sql  PostgreSQL reference migration
 ```
 
+## Feature summary (v0.2.0)
+
+| Feature | Location |
+|---|---|
+| `CapabilityUI` / `denyByDefault()` | `runtime.ts` |
+| `revokeGrant(grantId)` | `runtime.ts` |
+| `Projector.redact(data, decision)` | `components.ts` |
+| `CapabilityRegistry.listDiscoverable(request?)` | `components.ts` |
+| Field-level `writable` on `AuthorizedResource.fields` | `runtime.ts` `project()` |
+| `resources/templates/list` MCP method | `runtime.ts` `createMCPServer()` |
+| `validDuring` in PostgreSQL persistence | `persistence.ts` |
+| `PostgresPersistence.revokeGrant(grantId)` | `persistence.ts` |
+| `CupPersistence.revokeGrant` interface | `persistence.ts` |
+
 ## Request flow
 
 1. A host identity adapter resolves a verified request into a `Subject`.

@@ -12,7 +12,7 @@ const sidebars: SidebarsConfig = {
     {
       type: 'category',
       label: 'Build with CUP',
-      items: ['build/installation', 'build/first-resource', 'build/read-data', 'build/execute-action'],
+      items: ['build/installation', 'build/from-zero-to-production', 'build/first-resource', 'build/read-data', 'build/execute-action'],
     },
     {
       type: 'category',

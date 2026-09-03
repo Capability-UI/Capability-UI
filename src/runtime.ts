@@ -162,7 +162,7 @@ export class CapabilityUI {
       const discover = await this.authorize({ subject: request.subject, operation: 'discover', resource, purpose: request.context.purpose, context: request.context }); if (discover.effect !== 'allow') continue;
       let visibility: Visibility = 'listed'; let schema: JsonSchema | undefined;
       const inspect = await this.authorize({ subject: request.subject, operation: 'inspect', resource, purpose: request.context.purpose, context: request.context }); if (inspect.effect === 'allow') { visibility = 'inspectable'; schema = resource.schema; }
-      const read = await this.authorize({ subject: request.subject, operation: 'read', resource, purpose: request.context.purpose, context: request.context }); const fields = read.effect === 'allow' ? read.obligations.filter(obligation => obligation.type === 'redact').flatMap(obligation => obligation.fields).map(path => ({ path, readable: false })) : undefined; if (read.effect === 'allow') { visibility = 'readable'; schema = resource.schema; }
+      const read = await this.authorize({ subject: request.subject, operation: 'read', resource, purpose: request.context.purpose, context: request.context }); const fields = read.effect === 'allow' ? read.obligations.filter(obligation => obligation.type === 'redact').flatMap(obligation => obligation.fields).map(path => ({ path, readable: false, writable: false })) : undefined; if (read.effect === 'allow') { visibility = 'readable'; schema = resource.schema; }
       resources.push({ ref: { id: resource.id, version: resource.version }, visibility, schema, fields, capabilities: [] });
     }
     for (const capability of this.capabilities.values()) { const d = await this.authorize({ subject: request.subject, operation: 'execute', resource: capability, purpose: request.context.purpose, context: request.context }); if (d.effect === 'allow') { const actionToken = this.nonce(); const audience = request.context.channel ?? 'default'; this.actionTokens.set(actionToken, { capability: capability.id, subjectId: request.subject.id, policyVersion: d.policyVersion, audience, expiresAt: this.clock().getTime() + 5 * 60_000 }); const authorized = { id: capability.id, operation: capability.operation, inputSchema: capability.inputSchema, outputSchema: capability.outputSchema, risk: capability.risk, sideEffects: capability.sideEffects, confirmation: capability.confirmation, reversibility: capability.reversibility, obligations: d.obligations, actionToken }; capabilities.push(authorized); const parent = resources.find(resource => resource.ref.id === capability.id); if (parent) parent.capabilities.push(authorized); } }
@@ -203,6 +203,8 @@ export class CapabilityUI {
     const resource = this.resources.get(request.capability); if (!resource) throw new Error('CUP_RESOURCE_NOT_FOUND'); const d = await this.authorize({ subject: request.from, operation: 'delegate', resource, purpose: request.purpose, scope: request.scope, context: { purpose: request.purpose } }); if (d.effect !== 'allow') throw new Error(`CUP_NOT_AUTHORIZED:${d.reasonCode}`);
     const grant: DelegationGrant = { id: this.nonce(), from: request.from, to: request.to, capability: request.capability, operations: request.operations, scope: request.scope, purpose: request.purpose, expiresAt: new Date(this.clock().getTime() + request.expiresInMs).toISOString() }; this.delegations.set(grant.id, grant); return grant;
   }
+  /** Revoke a delegation grant. Any subsequent execute() using the grant will be denied. */
+  revokeGrant(grantId: string): void { this.delegations.delete(grantId); }
   async reverse(receiptId: string, request: Omit<ExecutionRequest, 'capability' | 'input'> & { capability?: string }): Promise<Receipt> {
     const original = this.receipts.all().find(receipt => receipt.id === receiptId);
     if (!original?.reversibleBy) return this.record({ status: 'denied', actor: request.subject, capability: request.capability ?? 'unknown', inputHash: hash({ receiptId }), decision: this.denial({ ...request, capability: request.capability ?? 'unknown', input: { receiptId } }, 'RECEIPT_NOT_REVERSIBLE') });
@@ -234,6 +236,8 @@ export interface CapabilityAdapter { capabilityId: string; invoke(input: unknown
 export interface RendererAdapter<T> { render(view: AuthorizedView, target: T): unknown; }
 export interface CapabilityUIOptions { registry?: Array<Resource | Capability>; receipts?: ReceiptSink; clock?: Clock; nonce?: NonceProvider; }
 export function createCapabilityUI(options: CapabilityUIOptions = {}): CapabilityUI { const cup = new CapabilityUI(options); for (const item of options.registry ?? []) cup.register(item); return cup; }
+/** Convenience: creates a CapabilityUI and documents that the policy starts closed. Use this at the top of host setup to make the deny-by-default guarantee explicit. */
+export function denyByDefault(options: CapabilityUIOptions = {}): CapabilityUI { return createCapabilityUI(options); }
 export function verifyActionToken(view: AuthorizedView, token: string): AuthorizedCapability | undefined { return view.capabilities.find(capability => capability.actionToken === token); }
 export function canonicalInputHash(input: unknown): string { return hash(input); }
 export function subject(id: string, attributes: Record<string, unknown> = {}, authenticated = true): Subject { return { id, type: id.startsWith('agent:') ? 'agent' : 'user', authenticated, attributes }; }
@@ -278,6 +282,12 @@ export function createMCPServer(options: { cup: CapabilityUI; name: string; auth
       if (request.method === 'initialize') return { jsonrpc: '2.0', id: request.id, result: { protocolVersion: '2025-06-18', serverInfo: { name: options.name, version: '0.2.0' }, capabilities: { resources: { subscribe: true }, tools: {}, prompts: { listChanged: false } }, _cup: { session } } };
       if (request.method === 'resources/list') return { jsonrpc: '2.0', id: request.id, result: { resources: await cup.discover({ subject: subjectValue, purpose: context.purpose, context }) } };
       if (request.method === 'resources/read') { const uri = String(params.uri ?? ''); const id = uri.replace(/^cup:\/\//, ''); return { jsonrpc: '2.0', id: request.id, result: await cup.read({ subject: subjectValue, resource: id, purpose: context.purpose, context }) }; }
+      if (request.method === 'resources/templates/list') {
+        // Returns inspectable resources as URI templates so clients can parameterize reads.
+        const view = await cup.project({ subject: subjectValue, context });
+        const templates = view.resources.filter(r => r.visibility === 'inspectable' || r.visibility === 'readable' || r.visibility === 'usable').map(r => ({ uriTemplate: `cup://${r.ref.id}`, name: r.ref.id, schema: r.schema }));
+        return { jsonrpc: '2.0', id: request.id, result: { resourceTemplates: templates } };
+      }
       if (request.method === 'tools/list') { const view = await cup.project({ subject: subjectValue, goal: String(params.goal ?? ''), context }); return { jsonrpc: '2.0', id: request.id, result: { tools: view.capabilities.map(c => ({ name: c.id, description: `${c.id} (${c.risk} risk)`, inputSchema: c.inputSchema, _cup: c })) } }; }
       if (request.method === 'tools/call') { const name = String(params.name ?? ''); const args = params.arguments ?? {}; const receipt = await cup.execute({ subject: subjectValue, capability: name, input: args, purpose: context.purpose, context }); return { jsonrpc: '2.0', id: request.id, result: { isError: receipt.status !== 'succeeded', content: [{ type: 'text', text: JSON.stringify(receipt) }] } }; }
       if (request.method === 'prompts/list') return { jsonrpc: '2.0', id: request.id, result: { prompts: (options.prompts ?? []).map(prompt => ({ name: prompt.name, description: prompt.description, arguments: prompt.arguments })) } };

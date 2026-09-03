@@ -21,7 +21,8 @@ export class CapabilityRegistry implements ResourceRegistry {
   list(): Resource[] { return [...this.resources.values()]; }
   getVersion(id: string): string | undefined { return this.resources.get(id)?.version; }
   ref(id: string): ResourceRef { const resource = this.resources.get(id); return { id, version: resource?.version }; }
-  listDiscoverable(): Resource[] { return this.list(); }
+  /** Returns all registered resources. Pass a subject+context to the policy engine to filter by discoverability. */
+  listDiscoverable(_request?: { subject?: Subject; context?: Record<string, unknown> }): Resource[] { return this.list(); }
   validate(id: string, input: unknown): string[] { const resource = this.resources.get(id); if (!resource) return ['RESOURCE_NOT_FOUND']; return validateShape(input, resource.schema); }
 }
 
@@ -40,6 +41,27 @@ export class Projector {
   constructor(private readonly cup: CapabilityUI) {}
   project(request: { subject: Subject; goal?: string; context: Record<string, unknown> }): Promise<AuthorizedView> { return this.cup.project(request); }
   buildActionSchema(capability: Capability): Record<string, unknown> { return { id: capability.id, operation: capability.operation, inputSchema: capability.inputSchema, outputSchema: capability.outputSchema, risk: capability.risk, sideEffects: capability.sideEffects, confirmation: capability.confirmation, reversibility: capability.reversibility }; }
+  /** Applies field-level redaction from a decision's redact obligations to a data payload. */
+  redact(data: unknown, decision: Decision): unknown {
+    const fields = decision.obligations.filter(o => o.type === 'redact').flatMap(o => (o as { type: 'redact'; fields: string[] }).fields);
+    return redactFields(data, fields);
+  }
+}
+
+function redactFields(value: unknown, paths: string[]): unknown {
+  if (!paths.length || !value || typeof value !== 'object') return value;
+  if (Array.isArray(value)) return value.map(item => redactFields(item, paths));
+  const output: Record<string, unknown> = { ...(value as Record<string, unknown>) };
+  for (const path of paths) {
+    const dotIndex = path.indexOf('.');
+    if (dotIndex === -1) { delete output[path]; }
+    else {
+      const head = path.slice(0, dotIndex);
+      const rest = path.slice(dotIndex + 1);
+      if (head in output) output[head] = redactFields(output[head], [rest]);
+    }
+  }
+  return output;
 }
 
 export class Executor {
