@@ -19,7 +19,13 @@ Until the package is on the public npm registry, `0.2.0` is published to GitHub 
 
 Workflow: `.github/workflows/package.yml`.
 
-The `publish` job needs `packages: write` on `GITHUB_TOKEN` (set on that job). Org or repo Actions settings must allow the default `GITHUB_TOKEN` to create packages. Do not add a long-lived npm token for this path.
+The `publish` job needs `packages: write` on `GITHUB_TOKEN` (set on that job). Do not add a long-lived npm token for this path.
+
+The org must allow that GitHub App installation to create packages. A 403 like `installation not allowed to Create organization package` means Actions (or the PAT) cannot create org packages yet. An org owner should enable package creation for GitHub Actions, then retry the tag or dispatch. A human PAT with `write:packages` (SSO-authorized) can also publish once:
+
+```bash
+NODE_AUTH_TOKEN=TOKEN npm publish
+```
 
 Publish `0.2.0` after this workflow is on `main`:
 
