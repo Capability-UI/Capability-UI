@@ -39,9 +39,19 @@ Runnable hosts live in [`examples/`](examples/README.md): Meridian (CRM), Clearl
 
 ## Install
 
-```bash
-npm install @capability-ui/core
+Until public npm is available, install `0.2.0` from GitHub Packages with a GitHub PAT that has `read:packages` (authorize SSO for the Capability-UI org if required). Do not commit the token.
+
+```ini
+# .npmrc
+@capability-ui:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=TOKEN
 ```
+
+```bash
+npm i @capability-ui/core@0.2.0
+```
+
+Maintainer publish steps: [docs/developer/publishing.md](docs/developer/publishing.md).
 
 ## Read data
 
