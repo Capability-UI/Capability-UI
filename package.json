@@ -15,16 +15,30 @@
     "cup": "./dist/src/bin/cup.js"
   },
   "files": [
-    "dist",
+    "dist/src",
+    "sql",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "prepack": "npm run build",
     "test": "npm run build && node --test dist/test/*.test.js",
     "check": "tsc -p tsconfig.json --noEmit",
     "examples:install": "npm install --prefix examples",
     "examples:test": "npm test --prefix examples"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Capability-UI/Capability-UI.git"
+  },
+  "homepage": "https://github.com/Capability-UI/Capability-UI#readme",
+  "bugs": {
+    "url": "https://github.com/Capability-UI/Capability-UI/issues"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
   },
   "keywords": [
     "authorization",

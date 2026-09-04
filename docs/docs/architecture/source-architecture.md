@@ -74,6 +74,8 @@ import {
 } from '@capability-ui/core';
 ```
 
+The published tarball includes `dist/src` (JS, declarations, source maps), `sql/`, `README.md`, and `LICENSE`. Tests under `dist/test` are not packed.
+
 The package emits declarations for every exported module. Internal helpers such as canonicalization and schema validation stay private to the runtime unless an explicit public helper is provided.
 
 ## SQL startup

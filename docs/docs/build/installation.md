@@ -12,16 +12,25 @@ import TabItem from '@theme/TabItem';
 
 CUP is distributed as a TypeScript package with no runtime dependency on a UI library, database, MCP SDK, or agent framework.
 
+Until public npm is available, install from GitHub Packages (`@capability-ui` scope, org `Capability-UI`) using a PAT with `read:packages`. Do not commit the token.
+
+```ini
+# .npmrc
+@capability-ui:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=TOKEN
+```
+
+```bash
+npm i @capability-ui/core@0.2.0
+```
+
 ## Requirements
 
 - Node.js 20 or newer
 - TypeScript 5.6 or newer for TypeScript projects
 - A host authentication system
 - A resource adapter for data-backed resources
-
-```bash
-npm install @capability-ui/core
-```
+- A GitHub PAT with `read:packages` while the package is only on GitHub Packages
 
 For a project that compiles ESM TypeScript:
 
