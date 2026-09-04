@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Keel</title>
-    <link rel="stylesheet" href="/app.css" />
+    <link rel="stylesheet" href="app.css" />
   </head>
   <body>
     <header class="top">
@@ -13,9 +13,8 @@
         <span class="yard">Harbor yard 3</span>
       </div>
       <nav>
-        <button type="button" class="tab on" data-view="inventory">Inventory</button>
-        <button type="button" class="tab" data-view="orders">Purchase orders</button>
-        <a href="/explorer.html">Data explorer</a>
+        <span class="nav-label">Generated floor</span>
+        <a href="explorer.html">Data explorer</a>
       </nav>
       <label class="who">
         Shift
@@ -24,13 +23,23 @@
     </header>
     <div class="layout">
       <main>
-        <section id="inventory"></section>
-        <section id="orders" hidden></section>
+        <section class="canvas-head">
+          <div>
+            <h1>Floor</h1>
+            <p class="quiet" id="canvas-lede">Ask the copilot to add tables, forms, cards, and views. Nothing is hardcoded here.</p>
+          </div>
+          <button type="button" class="ghost" id="clear-floor" hidden>Clear floor</button>
+        </section>
+        <section id="suggestions" class="chips"></section>
+        <section id="floor" class="floor"></section>
       </main>
       <aside class="copilot">
         <header>
-          <h2>Copilot</h2>
-          <p>Asks the warehouse model. Changes still go through your signed-in role.</p>
+          <div>
+            <h2>Copilot</h2>
+            <p>Generates warehouse UI from this shift's permissions. Data changes still go through CUP.</p>
+          </div>
+          <button type="button" class="ghost on-dark" id="clear-chat">Clear chat</button>
         </header>
         <details class="model" id="model-form">
           <summary>Model connection</summary>
@@ -38,14 +47,16 @@
           <input id="openai-key" type="password" placeholder="API key" />
           <input id="openai-model" placeholder="Model" />
         </details>
+        <p class="prompt-label">Try asking</p>
+        <div id="chat-prompts" class="prompts"></div>
         <div class="log" id="chat-log"></div>
         <form class="ask" id="chat-form">
-          <textarea id="chat-input" rows="3" placeholder="Ask about stock, drafts, or a pick"></textarea>
+          <textarea id="chat-input" rows="3" placeholder="Ask for a briefing, a count sheet, a worklist, or any layout from this shift"></textarea>
           <button type="submit">Ask</button>
         </form>
       </aside>
     </div>
     <dialog id="dialog"></dialog>
-    <script src="/app.js" type="module"></script>
+    <script src="app.js" type="module"></script>
   </body>
 </html>

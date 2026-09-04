@@ -1,4 +1,4 @@
-import { api, href, runAction, when } from '/client.js';
+import { api, href, runAction, when } from './client.js';
 
 const state = { meta: null, subjectId: '', tickets: [], comments: [], selected: null, canAssign: false, canEscalate: false };
 

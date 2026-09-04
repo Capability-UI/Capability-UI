@@ -88,6 +88,69 @@ test('agent studio lets the ops lead draft a purchase order', async () => {
   assert.equal(forged.status, 'denied');
 });
 
+test('keel composes generative UI from the authorized view', async () => {
+  const app = await createAgentStudio();
+  const nia = principal(app, 'user:nia');
+  const ellis = principal(app, 'user:ellis');
+  const niaView = await app.cup.project({ subject: nia, context: { channel: 'web' } });
+  const ellisView = await app.cup.project({ subject: ellis, context: { channel: 'web' } });
+  assert.ok(app.composeUi);
+  const dashboard = app.composeUi({ view: niaView, message: 'Build a warehouse dashboard', surfaces: [] });
+  assert.deepEqual(dashboard.surfaces.map((item) => item.id), [
+    'stat:lowStockCount',
+    'stat:draftCount',
+    'stat:onHandTotal',
+  ]);
+  assert.equal(dashboard.surfaces.every((item) => item.kind === 'stat'), true);
+  const form = app.composeUi({ view: niaView, message: 'Add a draft purchase order form', surfaces: [] });
+  assert.deepEqual(form.surfaces.map((item) => item.id), ['form:inventory.draftPurchaseOrder']);
+  const low = app.composeUi({ view: niaView, message: 'Add a low-stock table', surfaces: [] });
+  assert.deepEqual(low.surfaces.map((item) => item.id), ['table:products-low']);
+  const adjust = app.composeUi({ view: niaView, message: 'Add a count adjustment form', surfaces: [] });
+  assert.deepEqual(adjust.surfaces.map((item) => item.id), ['form:inventory.adjust']);
+  const orders = app.composeUi({ view: niaView, message: 'Show purchase orders', surfaces: [] });
+  assert.deepEqual(orders.surfaces.map((item) => item.id), ['table:orders']);
+  const briefing = app.composeUi({
+    view: niaView,
+    message: 'Morning dock briefing: low-stock as cards with SKU and bin only, plus a note for the pick crew',
+    surfaces: [],
+  });
+  assert.equal(briefing.surfaces.some((item) => item.kind === 'notice'), true);
+  assert.equal(briefing.surfaces.some((item) => item.kind === 'cards' && item.columns?.join() === 'sku,bin'), true);
+  const sheet = app.composeUi({
+    view: niaView,
+    message: 'Night count sheet with only SKU, bin, and on hand',
+    surfaces: [],
+  });
+  assert.deepEqual(sheet.surfaces.map((item) => item.columns), [['sku', 'bin', 'onHand']]);
+  assert.equal(sheet.surfaces.every((item) => item.kind === 'table'), true);
+  const worklist = app.composeUi({
+    view: niaView,
+    message: 'Supplier restock worklist as cards, no unit cost',
+    surfaces: [],
+  });
+  assert.equal(worklist.surfaces[0]?.kind, 'cards');
+  assert.equal(worklist.surfaces[0]?.columns?.includes('unitCost'), false);
+  const desk = app.composeUi({
+    view: niaView,
+    message: 'Submit desk: only draft purchase orders and a send form',
+    surfaces: [],
+  });
+  assert.equal(desk.surfaces.some((item) => item.filter === 'drafts'), true);
+  assert.equal(desk.surfaces.some((item) => item.capabilityId === 'inventory.submitPurchaseOrder'), true);
+  const buyerDesk = app.composeUi({
+    view: ellisView,
+    message: 'Submit desk: only draft purchase orders and a send form',
+    surfaces: [],
+  });
+  assert.equal(buyerDesk.surfaces.some((item) => item.capabilityId === 'inventory.submitPurchaseOrder'), false);
+  const buyer = app.composeUi({ view: ellisView, message: 'Build a warehouse dashboard', surfaces: dashboard.surfaces });
+  assert.equal(buyer.surfaces.some((item) => item.capabilityId === 'inventory.submitPurchaseOrder'), false);
+  assert.equal(buyer.surfaces.some((item) => item.columns?.includes('unitCost')), false);
+  const cleared = app.composeUi({ view: niaView, message: 'Clear the canvas', surfaces: dashboard.surfaces });
+  assert.equal(cleared.surfaces.length, 0);
+});
+
 test('sqlite explorer is read-only and lists the CRM model', async () => {
   const app = await createCrmWorkspace();
   assert.ok(app.database);

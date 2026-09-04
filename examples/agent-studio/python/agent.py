@@ -6,19 +6,43 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import sys
 from dataclasses import dataclass
 from typing import Any
 from urllib.request import Request, urlopen
 from uuid import uuid4
 
-SYSTEM_PROMPT = """You are an operations assistant for Harbor inventory.
-You may only change data by calling CUP MCP tools. The web UI renders an AuthorizedView;
-it is not a security boundary. After tools run, summarize the receipt status.
-If a tool is denied, explain the reason code and do not pretend the write succeeded.
-Prefer inventory.draftPurchaseOrder for restock suggestions. Include a short reason string in the tool arguments. Use inventory.submitPurchaseOrder
-only when the user clearly asks to send the order. Use inventory.adjust for count corrections.
+SYSTEM_PROMPT = """You are the Keel floor copilot. Harbor is a warehouse.
+
+When they ask for a dashboard or KPIs, emit only stat surfaces. When they ask for a briefing, count sheet, worklist, or submit desk, invent a layout from the authorized view (custom titles, column subsets, cards vs tables). Do not only reuse the green shortcut chips.
+
+You may only change data by calling CUP MCP tools. The canvas is not a security boundary.
+After tools run, summarize the receipt status. If a tool is denied, explain the reason code
+and do not pretend the write succeeded.
+
+When they ask to see, add, or build UI, emit a fenced cup-ui JSON block after a short reply:
+
+```cup-ui
+{"op":"upsert","surfaces":[{"id":"table:products-low","title":"Below reorder","kind":"table","resourceId":"inventory.products","filter":"belowReorder"}]}
+```
+
+ops:
+- upsert: add or replace surfaces by id
+- replace: rebuild the canvas
+- clear: empty the canvas
+
+kind must be table, form, stat, cards, or notice.
+Use only resource ids and capability ids from the authorized view in this turn.
+Do not include a submit form unless inventory.submitPurchaseOrder is listed.
+Do not include unitCost in columns unless that field is present for this shift.
+
+Prefer inventory.draftPurchaseOrder for restock. Include a short reason string.
+Use inventory.submitPurchaseOrder only when they clearly ask to send the order.
+Use inventory.adjust for count corrections.
 """
+
+CUP_UI_RE = re.compile(r"```cup-ui\s*([\s\S]*?)```", re.IGNORECASE)
 
 
 @dataclass
@@ -42,6 +66,38 @@ class CupClient:
         if body.get("error"):
             raise RuntimeError(body["error"].get("message", "MCP error"))
         return body.get("result")
+
+
+def upsert_surfaces(current: list[Any], incoming: list[Any]) -> list[Any]:
+    by_id: dict[str, Any] = {}
+    for item in current:
+        if isinstance(item, dict) and item.get("id"):
+            by_id[str(item["id"])] = item
+    for item in incoming:
+        if isinstance(item, dict) and item.get("id"):
+            by_id[str(item["id"])] = item
+    return list(by_id.values())
+
+
+def apply_cup_ui(text: str, surfaces: list[Any]) -> tuple[str, list[Any]]:
+    match = CUP_UI_RE.search(text)
+    if not match:
+        return text.strip(), surfaces
+    try:
+        payload = json.loads(match.group(1))
+    except json.JSONDecodeError:
+        return CUP_UI_RE.sub("", text).strip(), surfaces
+    op = payload.get("op") if isinstance(payload, dict) else "upsert"
+    incoming = payload.get("surfaces") if isinstance(payload, dict) else []
+    if not isinstance(incoming, list):
+        incoming = []
+    if op == "clear":
+        next_surfaces: list[Any] = []
+    elif op == "replace":
+        next_surfaces = incoming
+    else:
+        next_surfaces = upsert_surfaces(surfaces, incoming)
+    return CUP_UI_RE.sub("", text).strip(), next_surfaces
 
 
 def build_agent(model_name: str, api_key: str, base_url: str | None):
@@ -96,6 +152,24 @@ def build_agent(model_name: str, api_key: str, base_url: str | None):
     return agent
 
 
+def view_brief(view: Any) -> str:
+    if not isinstance(view, dict):
+        return "{}"
+    resources = view.get("resources") or []
+    capabilities = view.get("capabilities") or []
+    resource_ids = []
+    for item in resources:
+        if isinstance(item, dict):
+            ref = item.get("ref") or {}
+            resource_ids.append({
+                "id": ref.get("id"),
+                "visibility": item.get("visibility"),
+                "hiddenFields": [field.get("path") for field in (item.get("fields") or []) if isinstance(field, dict) and field.get("readable") is False],
+            })
+    cap_ids = [item.get("id") for item in capabilities if isinstance(item, dict)]
+    return json.dumps({"resources": resource_ids, "capabilities": cap_ids})
+
+
 async def handle(request: dict[str, Any]) -> dict[str, Any]:
     openai = request.get("openai") or {}
     api_key = openai.get("apiKey") or os.environ.get("OPENAI_API_KEY") or ""
@@ -103,6 +177,7 @@ async def handle(request: dict[str, Any]) -> dict[str, Any]:
     model_name = openai.get("model") or os.environ.get("OPENAI_MODEL") or "gpt-4.1-mini"
     subject_id = str(request.get("subjectId") or "user:nia")
     message = str(request.get("message") or "")
+    surfaces = request.get("surfaces") if isinstance(request.get("surfaces"), list) else []
     mcp_url = os.environ.get("CUP_MCP_URL") or "http://127.0.0.1:8784/mcp"
     cup = CupClient(url=mcp_url, subject_id=subject_id)
 
@@ -112,18 +187,27 @@ async def handle(request: dict[str, Any]) -> dict[str, Any]:
         names = [item.get("name") for item in tools] if isinstance(tools, list) else []
         return {
             "text": (
-                "No OpenAI API key configured. Set OPENAI_API_KEY, optional OPENAI_BASE_URL, "
-                f"and OPENAI_MODEL, or fill the sidebar. CUP MCP is up. Usable tools: {names}"
-            )
+                "No OpenAI API key configured. The canvas still generates tables and forms "
+                f"from this shift. Set OPENAI_API_KEY to change data in chat. Usable tools: {names}"
+            ),
+            "surfaces": surfaces,
         }
+
+    prompt = (
+        f"{message}\n\n"
+        f"Authorized view: {view_brief(request.get('view'))}\n"
+        f"Current canvas: {json.dumps(surfaces)}\n"
+        "If they want to see data, add UI. If they want a count or PO change, call CUP tools."
+    )
 
     try:
         agent = build_agent(model_name, api_key, base_url or None)
-        result = await agent.run(message, deps=cup)
+        result = await agent.run(prompt, deps=cup)
         text = getattr(result, "output", None) or getattr(result, "data", None) or str(result)
-        return {"text": text}
+        cleaned, next_surfaces = apply_cup_ui(str(text), surfaces)
+        return {"text": cleaned, "surfaces": next_surfaces}
     except Exception as exc:  # noqa: BLE001
-        return {"text": f"Agent error: {exc}"}
+        return {"text": f"Agent error: {exc}", "surfaces": surfaces}
 
 
 async def main() -> None:

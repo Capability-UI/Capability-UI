@@ -4,6 +4,7 @@ import { allowDataRead, allowExecute } from '../../shared/policy.ts';
 import { seedAccessModel } from '../../shared/access-model.ts';
 import { ExampleSqlite, sqliteFile } from '../../shared/sqlite.ts';
 import type { ExampleApp } from '../../shared/types.ts';
+import { composeKeelUi } from './compose.ts';
 
 const SCHEMA = `
 CREATE TABLE products (
@@ -248,6 +249,7 @@ export async function createAgentStudio(options: { databaseFile?: string } = {})
     defaultSubjectId: nia.id,
     catalog,
     pythonAgent: { script: fileURLToPath(new URL('../python/agent.py', import.meta.url)) },
+    composeUi: composeKeelUi,
     principals,
   };
 }

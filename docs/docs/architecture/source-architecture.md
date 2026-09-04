@@ -25,7 +25,7 @@ examples/
 ├── shared/           HTTP host, MCP JSON-RPC, stdio, generative UI
 ├── crm-workspace/    Contacts, notes, confirmed mail
 ├── support-desk/     Tickets, assignment, escalation
-└── agent-studio/     PydanticAI chat plus inventory view
+└── agent-studio/     PydanticAI copilot that generates warehouse tables and forms
 ```
 
 ## Feature summary (v0.2.0)

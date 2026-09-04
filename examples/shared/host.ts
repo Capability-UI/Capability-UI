@@ -11,7 +11,7 @@ import {
   type Subject,
 } from '@capability-ui/core';
 import { runMcpStdio, subjectFromRequest } from './mcp-stdio.ts';
-import type { ExampleApp, ExamplePrincipal } from './types.ts';
+import type { ExampleApp, ExamplePrincipal, UiSurface } from './types.ts';
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -464,9 +464,23 @@ export function createExampleDispatcher(
         const body = JSON.parse(await readBody(req)) as Record<string, unknown>;
         const openai = (body.openai ?? {}) as { apiKey?: string; baseUrl?: string; model?: string };
         const apiKey = openai.apiKey || process.env.OPENAI_API_KEY;
+        const subject = subjectById(app, typeof body.subjectId === 'string' ? body.subjectId : null);
+        const view = await app.cup.project({
+          subject,
+          goal: typeof body.message === 'string' ? body.message : app.title,
+          context: { purpose: 'example', channel: 'web' },
+        });
+        const surfaces = Array.isArray(body.surfaces) ? body.surfaces as UiSurface[] : [];
+        const composed = app.composeUi
+          ? app.composeUi({ view, message: String(body.message ?? ''), surfaces })
+          : undefined;
         if (!apiKey) {
           json(res, 200, {
-            text: 'No model key yet. You can still use the warehouse screens. Add OPENAI_API_KEY, OPENAI_BASE_URL, and OPENAI_MODEL, or fill the copilot fields, to enable chat.',
+            text: composed?.text
+              ?? 'No model key yet. You can still generate tables and forms from this shift. Add OPENAI_API_KEY, OPENAI_BASE_URL, and OPENAI_MODEL, or fill the copilot fields, to let the model change data in chat.',
+            surfaces: composed?.surfaces ?? surfaces,
+            suggestions: composed?.suggestions ?? [],
+            prompts: composed?.prompts ?? [],
           });
           return true;
         }
@@ -476,13 +490,51 @@ export function createExampleDispatcher(
             message: body.message,
             history: body.history ?? [],
             openai,
+            view,
+            surfaces: composed?.surfaces ?? surfaces,
+          }) as { text?: string; surfaces?: unknown };
+          const nextSurfaces = Array.isArray(result.surfaces)
+            ? result.surfaces as UiSurface[]
+            : (composed?.surfaces ?? surfaces);
+          const constrained = app.composeUi
+            ? app.composeUi({ view, message: '', surfaces: nextSurfaces })
+            : undefined;
+          json(res, 200, {
+            text: String(result.text ?? composed?.text ?? 'Done.')
+              .replace(/```cup-ui\s*[\s\S]*?```/gi, '')
+              .trim(),
+            surfaces: constrained?.surfaces ?? nextSurfaces,
+            suggestions: constrained?.suggestions ?? composed?.suggestions ?? [],
+            prompts: constrained?.prompts ?? composed?.prompts ?? [],
           });
-          json(res, 200, result);
         } catch (error) {
           json(res, 200, {
             text: `${error instanceof Error ? error.message : 'Agent failed'}. Install Python deps with: pip install -r agent-studio/python/requirements.txt`,
+            surfaces: composed?.surfaces ?? surfaces,
+            suggestions: composed?.suggestions ?? [],
+            prompts: composed?.prompts ?? [],
           });
         }
+        return true;
+      }
+
+      if (req.method === 'POST' && url.pathname === '/api/compose') {
+        if (!app.composeUi) {
+          json(res, 404, { error: 'This example does not compose UI' });
+          return true;
+        }
+        const body = JSON.parse(await readBody(req)) as Record<string, unknown>;
+        const subject = subjectById(app, typeof body.subjectId === 'string' ? body.subjectId : null);
+        const view = await app.cup.project({
+          subject,
+          goal: typeof body.message === 'string' ? body.message : app.title,
+          context: { purpose: 'example', channel: 'web' },
+        });
+        json(res, 200, app.composeUi({
+          view,
+          message: String(body.message ?? ''),
+          surfaces: Array.isArray(body.surfaces) ? body.surfaces as UiSurface[] : [],
+        }));
         return true;
       }
 

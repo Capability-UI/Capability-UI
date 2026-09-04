@@ -1,4 +1,4 @@
-import { api, href, money, runAction, when } from '/client.js';
+import { api, href, money, runAction, when } from './client.js';
 
 const OPEN_STAGES = [
   { id: 'discovery', label: 'Discovery' },

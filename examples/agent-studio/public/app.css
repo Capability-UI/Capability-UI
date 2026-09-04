@@ -28,7 +28,16 @@ html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--in
 .layout { display: grid; grid-template-columns: minmax(0, 1fr) 360px; min-height: calc(100vh - 60px); }
 main { padding: 28px 36px 64px; overflow: auto; }
 .copilot { background: #121c15; color: #e7efe6; display: flex; flex-direction: column; min-height: 100%; }
-.copilot header { padding: 24px 20px 12px; }
+.copilot header { padding: 24px 20px 12px; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.ghost.on-dark { background: transparent; color: #e7efe6; border-color: #314338; }
+.ghost.on-dark:hover { border-color: #7dcea0; color: #7dcea0; }
+.prompt-label { margin: 0; padding: 0 20px; color: #9eaf9f; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; }
+.prompts { display: grid; gap: 8px; padding: 8px 20px 12px; }
+.prompt {
+  text-align: left; background: #1b2a20; color: #e7efe6; border: 1px solid #314338; border-radius: 10px;
+  padding: 10px 12px; cursor: pointer; font: 500 13px/1.4 var(--font);
+}
+.prompt:hover { border-color: #7dcea0; }
 .copilot h2 { margin: 0; font: 600 20px var(--cond); }
 .copilot header p { color: #9eaf9f; font-size: 13px; margin: 8px 0 0; line-height: 1.45; }
 .model, .ask { display: grid; gap: 10px; padding: 0 20px 16px; }
@@ -62,3 +71,44 @@ dialog h2 { margin: 0 0 4px; font: 600 20px var(--cond); }
 dialog #cancel { background: transparent; color: var(--ink); border: 1px solid var(--line); }
 .stack { display: grid; gap: 12px; }
 .quiet { color: var(--muted); margin: 0; }
+.nav-label { color: #9eaf9f; font-size: 13px; margin-right: 12px; }
+.canvas-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 16px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+.chip, .ghost {
+  background: #fff; color: var(--ink); border: 1px solid #9aa890; border-radius: 999px;
+  padding: 8px 14px; cursor: pointer; font: 500 13px var(--font);
+}
+.chip { background: #1f6b4a; color: #fff; border-color: #1f6b4a; }
+.chip:hover { background: #18563b; color: #fff; }
+.ghost:hover { border-color: var(--accent); color: var(--accent); }
+.floor { display: grid; gap: 20px; }
+.empty {
+  background: var(--card); border: 1px dashed var(--line); border-radius: 16px; padding: 36px 28px;
+}
+.empty p { margin: 0 0 8px; }
+.surface { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 16px 16px 20px; }
+.surface header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
+.surface h2 { margin: 0; font: 600 18px var(--cond); }
+.stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+.surface-stat .stat { padding: 0; }
+.stat p { margin: 0; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
+.stat strong { font: 600 28px var(--cond); }
+.card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.bin-card {
+  border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: grid; gap: 4px;
+}
+.generated-form { display: grid; gap: 10px; max-width: 420px; }
+.generated-form .field, dialog .field { display: grid; gap: 4px; font-size: 13px; }
+.generated-form input, .generated-form select, .generated-form textarea,
+dialog input, dialog select, dialog textarea {
+  border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font: 14px var(--font);
+}
+.generated-form button[type="submit"] {
+  justify-self: start; background: var(--accent); color: white; border: 0; border-radius: 8px;
+  padding: 10px 14px; cursor: pointer; font: 600 13px var(--font);
+}
+.notice { margin: 0; color: var(--muted); }
+@media (max-width: 960px) {
+  .layout { grid-template-columns: 1fr; }
+  .copilot { min-height: 420px; }
+}

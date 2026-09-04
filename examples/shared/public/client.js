@@ -30,7 +30,7 @@ export async function runAction({ subjectId, capability, input, confirm = true }
 }
 
 export function money(value) {
-  if (value == null || value === '') return '—';
+  if (value == null || value === '') return '-';
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(Number(value));
 }
 
