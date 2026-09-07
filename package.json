@@ -23,6 +23,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "prepack": "npm run build",
+    "prepare": "npm run build",
     "test": "npm run build && node --test dist/test/*.test.js",
     "check": "tsc -p tsconfig.json --noEmit",
     "examples:install": "npm install --prefix examples",
