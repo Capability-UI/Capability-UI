@@ -7,6 +7,7 @@ import {
   type Subject,
   type Receipt,
   defineCapability,
+  capabilityToTool,
   createMCPServer,
   MemoryActionTokenService,
   PostgresPersistence,
@@ -257,6 +258,41 @@ test('uses injected clock and nonce providers', async () => {
   const cup = new CapabilityUI({ clock: () => new Date('2030-01-01T00:00:00Z'), nonce: () => 'fixed-id' });
   const decision = await cup.authorize({ subject: john, operation: 'read', resource: { id: 'missing' }, context: {} });
   assert.equal(decision.requestId, 'fixed-id');
+});
+
+test('capability description propagates to the authorized view and tool mapping', async () => {
+  const cup = new CapabilityUI();
+  cup.register(defineCapability({
+    id: 'notes.summarize', version: '1.0', sensitivity: 'personal',
+    description: 'Summarize a note into a short abstract.',
+    schema: { type: 'object' },
+    operation: 'execute', inputSchema: { type: 'object' }, outputSchema: { type: 'object' },
+    sideEffects: [], risk: 'low', confirmation: 'none', idempotency: 'none', reversibility: 'reversible',
+    handler: async () => ({ summary: 'done' }),
+  }));
+  cup.policy.allow({ id: 'john-summarize', principal: { id: john.id }, operation: 'execute', resource: { id: 'notes.summarize' }, priority: 10 });
+  const view = await cup.project({ subject: john, context: {} });
+  const authorized = view.capabilities.find(capability => capability.id === 'notes.summarize');
+  assert.ok(authorized, 'capability should be authorized');
+  assert.equal(authorized?.description, 'Summarize a note into a short abstract.');
+  const tool = capabilityToTool(authorized!);
+  assert.equal(tool.description, 'Summarize a note into a short abstract.');
+});
+
+test('tool mapping falls back to a synthesized description when none is set', async () => {
+  const cup = new CapabilityUI();
+  cup.register(defineCapability({
+    id: 'notes.archive', version: '1.0', sensitivity: 'personal',
+    schema: { type: 'object' },
+    operation: 'execute', inputSchema: { type: 'object' }, outputSchema: { type: 'object' },
+    sideEffects: [], risk: 'medium', confirmation: 'none', idempotency: 'none', reversibility: 'reversible',
+    handler: async () => ({ archived: true }),
+  }));
+  cup.policy.allow({ id: 'john-archive', principal: { id: john.id }, operation: 'execute', resource: { id: 'notes.archive' }, priority: 10 });
+  const view = await cup.project({ subject: john, context: {} });
+  const authorized = view.capabilities.find(capability => capability.id === 'notes.archive');
+  assert.equal(authorized?.description, undefined);
+  assert.equal(capabilityToTool(authorized!).description, 'notes.archive (medium risk)');
 });
 
 test('executes a separately authorized reversal capability', async () => {

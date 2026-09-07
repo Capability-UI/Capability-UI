@@ -26,6 +26,7 @@ export type NonceProvider = () => string;
 export interface Resource {
   id: string; type: ResourceType; version: string;
   sensitivity: 'public' | 'personal' | 'confidential' | 'restricted';
+  description?: string;
   schema: JsonSchema; owner?: string; metadata?: Record<string, unknown>;
   read?: (request: { subject: Subject; query?: Record<string, unknown>; fields?: string[]; scope?: Scope; context: RequestContext }) => Promise<unknown[]>;
 }
@@ -44,7 +45,7 @@ export type PolicyInput = Omit<Policy, 'effect'>;
 export interface AuthorizationRequest { requestId?: string; subject: Subject; operation: Operation; resource: ResourceRef; scope?: Scope; proposedInput?: unknown; purpose?: string; context: RequestContext; }
 export interface Decision { requestId: string; effect: Effect; reasonCode: string; matchedPolicies: string[]; obligations: Obligation[]; policyVersion: string; expiresAt?: string; fieldFilter?: FieldFilter; }
 export interface FieldPermission { path: string; readable: boolean; writable?: boolean; }
-export interface AuthorizedCapability { id: string; operation: Operation; inputSchema: JsonSchema; outputSchema: JsonSchema; risk: Risk; sideEffects: string[]; confirmation: ConfirmationMode; reversibility?: Capability['reversibility']; obligations: Obligation[]; actionToken?: string; }
+export interface AuthorizedCapability { id: string; operation: Operation; description?: string; inputSchema: JsonSchema; outputSchema: JsonSchema; risk: Risk; sideEffects: string[]; confirmation: ConfirmationMode; reversibility?: Capability['reversibility']; obligations: Obligation[]; actionToken?: string; }
 export interface AuthorizedResource { ref: ResourceRef; visibility: Visibility; schema?: JsonSchema; data?: unknown; fields?: FieldPermission[]; capabilities: AuthorizedCapability[]; }
 export interface AuthorizedView { viewId: string; subjectId: string; goal?: string; purpose?: string; generatedAt: string; policyVersion: string; resources: AuthorizedResource[]; capabilities: AuthorizedCapability[]; globalObligations: Obligation[]; }
 export interface Confirmation { inputHash: string; confirmedBy: string; }
@@ -165,7 +166,7 @@ export class CapabilityUI {
       const read = await this.authorize({ subject: request.subject, operation: 'read', resource, purpose: request.context.purpose, context: request.context }); const fields = read.effect === 'allow' ? read.obligations.filter(obligation => obligation.type === 'redact').flatMap(obligation => obligation.fields).map(path => ({ path, readable: false, writable: false })) : undefined; if (read.effect === 'allow') { visibility = 'readable'; schema = resource.schema; }
       resources.push({ ref: { id: resource.id, version: resource.version }, visibility, schema, fields, capabilities: [] });
     }
-    for (const capability of this.capabilities.values()) { const d = await this.authorize({ subject: request.subject, operation: 'execute', resource: capability, purpose: request.context.purpose, context: request.context }); if (d.effect === 'allow') { const actionToken = this.nonce(); const audience = request.context.channel ?? 'default'; this.actionTokens.set(actionToken, { capability: capability.id, subjectId: request.subject.id, policyVersion: d.policyVersion, audience, expiresAt: this.clock().getTime() + 5 * 60_000 }); const authorized = { id: capability.id, operation: capability.operation, inputSchema: capability.inputSchema, outputSchema: capability.outputSchema, risk: capability.risk, sideEffects: capability.sideEffects, confirmation: capability.confirmation, reversibility: capability.reversibility, obligations: d.obligations, actionToken }; capabilities.push(authorized); const parent = resources.find(resource => resource.ref.id === capability.id); if (parent) parent.capabilities.push(authorized); } }
+    for (const capability of this.capabilities.values()) { const d = await this.authorize({ subject: request.subject, operation: 'execute', resource: capability, purpose: request.context.purpose, context: request.context }); if (d.effect === 'allow') { const actionToken = this.nonce(); const audience = request.context.channel ?? 'default'; this.actionTokens.set(actionToken, { capability: capability.id, subjectId: request.subject.id, policyVersion: d.policyVersion, audience, expiresAt: this.clock().getTime() + 5 * 60_000 }); const authorized = { id: capability.id, operation: capability.operation, description: capability.description, inputSchema: capability.inputSchema, outputSchema: capability.outputSchema, risk: capability.risk, sideEffects: capability.sideEffects, confirmation: capability.confirmation, reversibility: capability.reversibility, obligations: d.obligations, actionToken }; capabilities.push(authorized); const parent = resources.find(resource => resource.ref.id === capability.id); if (parent) parent.capabilities.push(authorized); } }
     return { viewId: this.nonce(), subjectId: request.subject.id, goal: request.goal, purpose: request.context.purpose, generatedAt: this.clock().toISOString(), policyVersion: this.policy.version(), resources, capabilities, globalObligations: [] };
   }
   async read(request: { subject: Subject; resource: string; query?: Record<string, unknown>; fields?: string[]; scope?: Scope; purpose?: string; context: RequestContext }): Promise<{ items: unknown[]; receiptId: string }> {
@@ -288,7 +289,7 @@ export function createMCPServer(options: { cup: CapabilityUI; name: string; auth
         const templates = view.resources.filter(r => r.visibility === 'inspectable' || r.visibility === 'readable' || r.visibility === 'usable').map(r => ({ uriTemplate: `cup://${r.ref.id}`, name: r.ref.id, schema: r.schema }));
         return { jsonrpc: '2.0', id: request.id, result: { resourceTemplates: templates } };
       }
-      if (request.method === 'tools/list') { const view = await cup.project({ subject: subjectValue, goal: String(params.goal ?? ''), context }); return { jsonrpc: '2.0', id: request.id, result: { tools: view.capabilities.map(c => ({ name: c.id, description: `${c.id} (${c.risk} risk)`, inputSchema: c.inputSchema, _cup: c })) } }; }
+      if (request.method === 'tools/list') { const view = await cup.project({ subject: subjectValue, goal: String(params.goal ?? ''), context }); return { jsonrpc: '2.0', id: request.id, result: { tools: view.capabilities.map(c => ({ name: c.id, description: c.description ?? `${c.id} (${c.risk} risk)`, inputSchema: c.inputSchema, _cup: c })) } }; }
       if (request.method === 'tools/call') {
         const name = String(params.name ?? '');
         const args = params.arguments ?? {};

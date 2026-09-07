@@ -45,7 +45,7 @@ export interface MCPTransportProfile {
 export interface RenderResult { content: unknown; warnings?: string[]; actionTokens?: string[]; }
 
 export function capabilityToTool(capability: AuthorizedCapability): Record<string, unknown> {
-  return { name: capability.id, inputSchema: capability.inputSchema, outputSchema: capability.outputSchema, risk: capability.risk, sideEffects: capability.sideEffects, confirmation: capability.confirmation, actionToken: capability.actionToken };
+  return { name: capability.id, description: capability.description ?? `${capability.id} (${capability.risk} risk)`, inputSchema: capability.inputSchema, outputSchema: capability.outputSchema, risk: capability.risk, sideEffects: capability.sideEffects, confirmation: capability.confirmation, actionToken: capability.actionToken };
 }
 
 export function buildExecutionRequest(subject: Subject, capability: AuthorizedCapability, input: unknown, context: ExecutionRequest['context']): ExecutionRequest {
