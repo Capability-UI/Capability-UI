@@ -1,0 +1,34 @@
+{
+  "name": "Capability UI",
+  "user": "ubuntu",
+  "install": "bash .cursor/install.sh",
+  "terminals": [
+    {
+      "name": "crm (Meridian)",
+      "command": "npm --prefix examples run crm",
+      "description": "Meridian sales CRM example host + MCP + data explorer on http://127.0.0.1:8782"
+    },
+    {
+      "name": "support (Clearline)",
+      "command": "npm --prefix examples run support",
+      "description": "Clearline IT service desk example host + MCP + data explorer on http://127.0.0.1:8783"
+    },
+    {
+      "name": "agent (Keel)",
+      "command": "npm --prefix examples run agent",
+      "description": "Keel warehouse generated-UI example host + MCP + data explorer on http://127.0.0.1:8784"
+    },
+    {
+      "name": "site",
+      "command": "bash .cursor/start.sh",
+      "description": "Combined marketing site + live examples at /play/{crm,support,agent} on http://127.0.0.1:4321 (requires the sibling Website repo)"
+    }
+  ],
+  "ports": [
+    { "name": "marketing site + /play examples", "port": 4321 },
+    { "name": "crm (Meridian)", "port": 8782 },
+    { "name": "support (Clearline)", "port": 8783 },
+    { "name": "agent (Keel)", "port": 8784 }
+  ],
+  "repositoryDependencies": ["github.com/Capability-UI/Website"]
+}
