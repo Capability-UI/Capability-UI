@@ -1,6 +1,7 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 
-export type Operation = 'discover' | 'inspect' | 'read' | 'create' | 'update' | 'delete' | 'execute' | 'share' | 'delegate';
+export const OPERATIONS = ['discover', 'inspect', 'read', 'create', 'update', 'delete', 'move', 'execute', 'share', 'delegate'] as const;
+export type Operation = (typeof OPERATIONS)[number];
 export type ResourceType = 'data' | 'capability' | 'workflow' | 'view' | 'agent';
 export type Risk = 'low' | 'medium' | 'high' | 'critical';
 export type Effect = 'allow' | 'deny';
@@ -10,6 +11,8 @@ export type SideEffect = string;
 export type ResourceRef = { id: string; version?: string };
 export type Scope = Record<string, unknown>;
 export type RequestContext = Scope & { purpose?: string; channel?: string; now?: Date };
+export type ActorType = Subject['type'] | 'anonymous';
+export const ANONYMOUS_ACTOR = { id: 'anonymous', type: 'anonymous' } as const;
 
 export interface Subject { id: string; type: 'user' | 'agent' | 'service' | 'group'; authenticated: boolean; attributes: Record<string, unknown>; }
 export type PrincipalSelector = { id: string } | { role: string } | { type: Subject['type'] } | { any: true };
@@ -51,14 +54,51 @@ export interface AuthorizedView { viewId: string; subjectId: string; goal?: stri
 export interface Confirmation { inputHash: string; confirmedBy: string; }
 export interface ExecutionContext extends RequestContext { requestId: string; idempotencyKey?: string; actorId?: string; }
 export interface ExecutionRequest extends Omit<AuthorizationRequest, 'operation' | 'resource'> { operation?: Operation; resource?: ResourceRef; capability: string; input: unknown; actionToken?: string; confirmation?: Confirmation; idempotencyKey?: string; delegation?: DelegationGrant; }
-export interface Receipt { id: string; status: 'succeeded' | 'failed' | 'denied' | 'pending'; actor: { id: string; type: Subject['type'] }; capability: string; resourceRefs?: ResourceRef[]; inputHash: string; decision: Decision; confirmation?: Confirmation; resultSummary?: unknown; reversibleBy?: string; createdAt: string; }
+export interface Receipt {
+  id: string;
+  status: 'succeeded' | 'failed' | 'denied' | 'pending';
+  actor: { id: string; type: ActorType };
+  capability: string;
+  /** Present on every newly written receipt. Optional so stored 0.2.x rows still type-check. */
+  operation?: Operation;
+  resourceRefs?: ResourceRef[];
+  /** Omitted on some denied receipts when the input was never hashed. Never a raw payload. */
+  inputHash?: string;
+  decision: Decision;
+  confirmation?: Confirmation;
+  resultSummary?: unknown;
+  reversibleBy?: string;
+  createdAt: string;
+}
 export interface DelegationGrant { id: string; from: Subject; to: Subject; capability: string; operations: Operation[]; scope?: Scope; purpose?: string; expiresAt: string; }
 export interface ExecutionAdapter { capabilityId: string; invoke(input: unknown, context: ExecutionContext): Promise<unknown>; }
 export interface ResourceAdapter { resourceId: string; read(request: { subject: Subject; query?: Record<string, unknown>; fields?: string[]; scope?: Scope; context: RequestContext }): Promise<unknown[]>; }
 export interface ReceiptQuery { requestId?: string; actorId?: string; capability?: string; status?: Receipt['status']; }
-export interface ReceiptSink { append(receipt: Receipt): Promise<void>; all(): Receipt[]; find?(query: ReceiptQuery): Receipt[]; }
+export interface ReceiptSink { append(receipt: Receipt): Promise<void>; all(): Receipt[]; find?(query: ReceiptQuery): Receipt[]; scrubForResource?(resourceId: string): Receipt[]; }
+export interface DeniedReceiptContext { operation: Operation; capability: string; actor: Receipt['actor']; reasonCode: string; subject?: Subject; }
+export interface ResultSummaryContext { operation: Operation; capability: string; status: Receipt['status']; result: unknown; }
+export type WriteDeniedReceipts = boolean | ((context: DeniedReceiptContext) => boolean);
 
-export class MemoryReceiptSink implements ReceiptSink { private readonly entries: Receipt[] = []; async append(receipt: Receipt) { this.entries.push(receipt); } all() { return [...this.entries]; } find(query: ReceiptQuery) { return this.entries.filter(r => (!query.requestId || r.decision.requestId === query.requestId) && (!query.actorId || r.actor.id === query.actorId) && (!query.capability || r.capability === query.capability) && (!query.status || r.status === query.status)); } }
+export class MemoryReceiptSink implements ReceiptSink {
+  private readonly entries: Receipt[] = [];
+  async append(receipt: Receipt) { this.entries.push(receipt); }
+  all() { return [...this.entries]; }
+  find(query: ReceiptQuery) {
+    return this.entries.filter(r =>
+      (!query.requestId || r.decision.requestId === query.requestId)
+      && (!query.actorId || r.actor.id === query.actorId)
+      && (!query.capability || r.capability === query.capability)
+      && (!query.status || r.status === query.status));
+  }
+  /** Drop summaries and confirmation material from receipts that reference a resource id. */
+  scrubForResource(resourceId: string): Receipt[] {
+    for (let i = 0; i < this.entries.length; i++) {
+      const receipt = this.entries[i]!;
+      if (receiptReferencesResource(receipt, resourceId)) this.entries[i] = stripReceiptContent(receipt);
+    }
+    return this.all();
+  }
+}
 
 function canonicalize(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonicalize);
@@ -68,7 +108,13 @@ function canonicalize(value: unknown): unknown {
   if (value instanceof Date) return value.toISOString();
   return value;
 }
-function hash(value: unknown): string { return createHash('sha256').update(JSON.stringify(canonicalize(value))).digest('hex'); }
+function digest(payload: string, confirmationKey?: string): string {
+  if (confirmationKey) return createHmac('sha256', confirmationKey).update(payload).digest('hex');
+  return createHash('sha256').update(payload).digest('hex');
+}
+function hash(value: unknown, confirmationKey?: string): string {
+  return digest(JSON.stringify(canonicalize(value)), confirmationKey);
+}
 function matchesScope(required: Scope | undefined, actual: Scope | undefined): boolean { return !required || (!!actual && Object.entries(required).every(([key, value]) => actual[key] === value)); }
 function matchesPrincipal(selector: PrincipalSelector, subject: Subject): boolean {
   if ('any' in selector) return selector.any;
@@ -107,6 +153,101 @@ function validateSchema(value: unknown, schema: JsonSchema, path = '$'): string[
   return errors;
 }
 function obligationsOf(policies: Policy[]): Obligation[] { return policies.flatMap(policy => policy.obligations ?? []); }
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+}
+function receiptActor(subject: Subject | undefined): Receipt['actor'] {
+  if (!subject || !subject.authenticated) return { ...ANONYMOUS_ACTOR };
+  return { id: subject.id, type: subject.type };
+}
+function isKnownOperation(value: string): value is Operation {
+  return (OPERATIONS as readonly string[]).includes(value);
+}
+
+export function pickIdsAndCounts(result: unknown): unknown | undefined {
+  if (result == null) return undefined;
+  if (Array.isArray(result)) {
+    const ids = result.flatMap(item => {
+      if (typeof item === 'string' || typeof item === 'number') return [item];
+      const record = asRecord(item);
+      if (typeof record?.id === 'string' || typeof record?.id === 'number') return [record.id];
+      return [];
+    });
+    return ids.length ? { count: result.length, ids } : { count: result.length };
+  }
+  const record = asRecord(result);
+  if (!record) return undefined;
+  const output: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(record)) {
+    if (key === 'id' || key.endsWith('Id')) {
+      if (typeof value === 'string' || typeof value === 'number') output[key] = value;
+    } else if (key === 'ids' || key.endsWith('Ids')) {
+      if (Array.isArray(value)) {
+        const ids = value.filter((item): item is string | number => typeof item === 'string' || typeof item === 'number');
+        if (ids.length) output[key] = ids;
+      }
+    } else if (key === 'count' || key === 'length' || key.endsWith('Count')) {
+      if (typeof value === 'number') output[key] = value;
+    }
+  }
+  return Object.keys(output).length ? output : undefined;
+}
+
+export function defaultSummarizeResult(context: ResultSummaryContext): unknown | undefined {
+  if (context.operation === 'delete') return undefined;
+  return pickIdsAndCounts(context.result);
+}
+
+export function receiptReferencesResource(receipt: Receipt, resourceId: string): boolean {
+  if (receipt.capability === resourceId) return true;
+  return (receipt.resourceRefs ?? []).some(ref => ref.id === resourceId);
+}
+
+/** Keep audit identity; drop summaries and confirmation material after a hard delete. */
+export function stripReceiptContent(receipt: Receipt): Receipt {
+  return {
+    id: receipt.id,
+    status: receipt.status,
+    actor: receipt.actor,
+    capability: receipt.capability,
+    operation: receipt.operation,
+    resourceRefs: receipt.resourceRefs,
+    decision: receipt.decision,
+    createdAt: receipt.createdAt,
+  };
+}
+
+export function scrubReceiptsForResource(receipts: Receipt[], resourceId: string): Receipt[] {
+  return receipts.map(receipt => receiptReferencesResource(receipt, resourceId) ? stripReceiptContent(receipt) : receipt);
+}
+
+function resourceRefsFor(operation: Operation, capabilityId: string, input: unknown): ResourceRef[] {
+  switch (operation) {
+    case 'move': {
+      const body = asRecord(input);
+      if (typeof body?.id === 'string' && typeof body.toType === 'string') return [{ id: body.id }, { id: body.toType }];
+      return [{ id: capabilityId }];
+    }
+    case 'update':
+    case 'delete': {
+      const body = asRecord(input);
+      if (typeof body?.id === 'string') return [{ id: body.id }];
+      return [{ id: capabilityId }];
+    }
+    case 'discover':
+    case 'inspect':
+    case 'read':
+    case 'create':
+    case 'execute':
+    case 'share':
+    case 'delegate':
+      return [{ id: capabilityId }];
+    default: {
+      const _exhaustive: never = operation;
+      return _exhaustive;
+    }
+  }
+}
 
 export class PolicyStore {
   private readonly rules: Policy[] = []; private revision = 0;
@@ -126,16 +267,49 @@ export class PolicyStore {
 export class CapabilityUI {
   readonly policy = new PolicyStore(); readonly receipts: ReceiptSink;
   private readonly clock: Clock; private readonly nonce: NonceProvider;
+  private readonly confirmationKey?: string;
+  private readonly writeDeniedReceipts: WriteDeniedReceipts;
+  private readonly summarizeResult: (context: ResultSummaryContext) => unknown | undefined;
   private readonly resources = new Map<string, Resource>(); private readonly capabilities = new Map<string, Capability>();
   private readonly delegations = new Map<string, DelegationGrant>(); private readonly prepared = new Map<string, Decision>();
   private readonly listeners = new Map<string, Set<(event: ResourceEvent) => void>>();
   private readonly actionTokens = new Map<string, { capability: string; subjectId: string; policyVersion: string; audience: string; expiresAt: number }>();
   private readonly idempotency = new Map<string, Receipt>();
-  constructor(options: ReceiptSink | { receipts?: ReceiptSink; clock?: Clock; nonce?: NonceProvider } = {}) {
-    if ('append' in options) { this.receipts = options; this.clock = () => new Date(); this.nonce = randomUUID; }
-    else { this.receipts = options.receipts ?? new MemoryReceiptSink(); this.clock = options.clock ?? (() => new Date()); this.nonce = options.nonce ?? randomUUID; }
+  constructor(options: ReceiptSink | CapabilityUIOptions = {}) {
+    if ('append' in options) { this.receipts = options; this.clock = () => new Date(); this.nonce = randomUUID; this.writeDeniedReceipts = true; this.summarizeResult = defaultSummarizeResult; }
+    else {
+      this.receipts = options.receipts ?? new MemoryReceiptSink();
+      this.clock = options.clock ?? (() => new Date());
+      this.nonce = options.nonce ?? randomUUID;
+      this.confirmationKey = options.confirmationKey;
+      this.writeDeniedReceipts = options.writeDeniedReceipts ?? true;
+      this.summarizeResult = options.summarizeResult ?? defaultSummarizeResult;
+    }
   }
-  register(resource: Resource | Capability): void { this.resources.set(resource.id, resource); if (resource.type === 'capability' && 'handler' in resource) this.capabilities.set(resource.id, resource); }
+  register(resource: Resource | Capability): void {
+    const registered = applyDeleteDefaults(resource);
+    this.resources.set(registered.id, registered);
+    if (registered.type === 'capability' && 'handler' in registered) this.capabilities.set(registered.id, registered);
+  }
+  /** Scrub stored receipts and cached idempotent results that reference a resource id. */
+  scrubForResource(resourceId: string): Receipt[] {
+    for (const [key, receipt] of this.idempotency) {
+      if (receiptReferencesResource(receipt, resourceId)) this.idempotency.set(key, stripReceiptContent(receipt));
+    }
+    if ('scrubForResource' in this.receipts && typeof this.receipts.scrubForResource === 'function') {
+      return this.receipts.scrubForResource(resourceId);
+    }
+    return scrubReceiptsForResource(this.receipts.all(), resourceId);
+  }
+  confirmationHash(capabilityId: string, input: unknown, operation?: Operation): string {
+    const capability = this.capabilities.get(capabilityId);
+    return canonicalConfirmationHash({
+      capability: capabilityId,
+      operation: operation ?? capability?.operation ?? 'execute',
+      input,
+      policyVersion: this.policy.version(),
+    }, this.confirmationKey);
+  }
   registerAdapter(adapter: ResourceAdapter | ExecutionAdapter): void {
     const id = 'resourceId' in adapter ? adapter.resourceId : adapter.capabilityId;
     const resource = this.resources.get(id); if (!resource) throw new Error('CUP_RESOURCE_NOT_FOUND');
@@ -144,13 +318,12 @@ export class CapabilityUI {
   }
   async authorize(request: AuthorizationRequest): Promise<Decision> {
     const requestId = request.requestId ?? this.nonce();
-    const validOperations: Operation[] = ['discover', 'inspect', 'read', 'create', 'update', 'delete', 'execute', 'share', 'delegate'];
-    if (!validOperations.includes(request.operation)) return { requestId, effect: 'deny', reasonCode: 'UNKNOWN_OPERATION', matchedPolicies: [], obligations: [], policyVersion: this.policy.version() };
-    if (!request.subject.authenticated && request.operation !== 'discover') return { requestId, effect: 'deny', reasonCode: 'SUBJECT_NOT_AUTHENTICATED', matchedPolicies: [], obligations: [], policyVersion: this.policy.version() };
+    if (!isKnownOperation(request.operation)) return { requestId, effect: 'deny', reasonCode: 'UNKNOWN_OPERATION', matchedPolicies: [], obligations: [], policyVersion: this.policy.version() };
     const matched = this.policy.matching(request); const priority = matched[0]?.priority;
     const effective = priority === undefined ? [] : matched.filter(rule => rule.priority === priority);
     const denied = effective.some(rule => rule.effect === 'deny'); const allowed = effective.some(rule => rule.effect === 'allow');
-    return { requestId, effect: denied ? 'deny' : allowed ? 'allow' : 'deny', reasonCode: denied ? 'EXPLICIT_DENY' : allowed ? 'ALLOWED' : 'NO_MATCHING_ALLOW', matchedPolicies: effective.map(rule => rule.id), obligations: obligationsOf(effective), policyVersion: this.policy.version(), expiresAt: effective.find(rule => rule.expiresAt)?.expiresAt };
+    const reasonCode = denied ? 'EXPLICIT_DENY' : allowed ? 'ALLOWED' : request.subject.authenticated ? 'NO_MATCHING_ALLOW' : 'NO_ACCOUNT';
+    return { requestId, effect: denied ? 'deny' : allowed ? 'allow' : 'deny', reasonCode, matchedPolicies: effective.map(rule => rule.id), obligations: obligationsOf(effective), policyVersion: this.policy.version(), expiresAt: effective.find(rule => rule.expiresAt)?.expiresAt };
   }
   async discover(request: { subject: Subject; purpose?: string; context: RequestContext }): Promise<AuthorizedResource[]> {
     const output: AuthorizedResource[] = [];
@@ -166,39 +339,80 @@ export class CapabilityUI {
       const read = await this.authorize({ subject: request.subject, operation: 'read', resource, purpose: request.context.purpose, context: request.context }); const fields = read.effect === 'allow' ? read.obligations.filter(obligation => obligation.type === 'redact').flatMap(obligation => obligation.fields).map(path => ({ path, readable: false, writable: false })) : undefined; if (read.effect === 'allow') { visibility = 'readable'; schema = resource.schema; }
       resources.push({ ref: { id: resource.id, version: resource.version }, visibility, schema, fields, capabilities: [] });
     }
-    for (const capability of this.capabilities.values()) { const d = await this.authorize({ subject: request.subject, operation: 'execute', resource: capability, purpose: request.context.purpose, context: request.context }); if (d.effect === 'allow') { const actionToken = this.nonce(); const audience = request.context.channel ?? 'default'; this.actionTokens.set(actionToken, { capability: capability.id, subjectId: request.subject.id, policyVersion: d.policyVersion, audience, expiresAt: this.clock().getTime() + 5 * 60_000 }); const authorized = { id: capability.id, operation: capability.operation, description: capability.description, inputSchema: capability.inputSchema, outputSchema: capability.outputSchema, risk: capability.risk, sideEffects: capability.sideEffects, confirmation: capability.confirmation, reversibility: capability.reversibility, obligations: d.obligations, actionToken }; capabilities.push(authorized); const parent = resources.find(resource => resource.ref.id === capability.id); if (parent) parent.capabilities.push(authorized); } }
+    for (const capability of this.capabilities.values()) {
+      const operation = capability.operation;
+      const d = await this.authorize({ subject: request.subject, operation, resource: capability, purpose: request.context.purpose, context: request.context });
+      if (d.effect === 'allow') {
+        const actionToken = this.nonce(); const audience = request.context.channel ?? 'default';
+        this.actionTokens.set(actionToken, { capability: capability.id, subjectId: request.subject.id, policyVersion: d.policyVersion, audience, expiresAt: this.clock().getTime() + 5 * 60_000 });
+        const authorized = { id: capability.id, operation: capability.operation, description: capability.description, inputSchema: capability.inputSchema, outputSchema: capability.outputSchema, risk: capability.risk, sideEffects: capability.sideEffects, confirmation: capability.confirmation, reversibility: capability.reversibility, obligations: d.obligations, actionToken };
+        capabilities.push(authorized);
+        const parent = resources.find(resource => resource.ref.id === capability.id); if (parent) parent.capabilities.push(authorized);
+      }
+    }
     return { viewId: this.nonce(), subjectId: request.subject.id, goal: request.goal, purpose: request.context.purpose, generatedAt: this.clock().toISOString(), policyVersion: this.policy.version(), resources, capabilities, globalObligations: [] };
   }
   async read(request: { subject: Subject; resource: string; query?: Record<string, unknown>; fields?: string[]; scope?: Scope; purpose?: string; context: RequestContext }): Promise<{ items: unknown[]; receiptId: string }> {
     const resource = this.resources.get(request.resource); if (!resource?.read) throw new Error('CUP_RESOURCE_NOT_READABLE');
-    const decision = await this.authorize({ subject: request.subject, operation: 'read', resource, scope: request.scope, purpose: request.purpose, context: request.context }); if (decision.effect !== 'allow') throw new Error(`CUP_NOT_AUTHORIZED:${decision.reasonCode}`);
+    const decision = await this.authorize({ subject: request.subject, operation: 'read', resource, scope: request.scope, purpose: request.purpose, context: request.context });
+    if (decision.effect !== 'allow') {
+      await this.recordDenied({ status: 'denied', actor: receiptActor(request.subject), capability: resource.id, operation: 'read', resourceRefs: [{ id: resource.id }], decision });
+      throw new Error(`CUP_NOT_AUTHORIZED:${decision.reasonCode}`);
+    }
     const raw = await resource.read({ subject: request.subject, query: request.query, fields: request.fields, scope: request.scope, context: request.context });
     const fields = decision.obligations.filter(o => o.type === 'redact').flatMap(o => o.fields); const items = raw.map(item => redactValue(item, fields));
-    const receipt = await this.record({ status: 'succeeded', actor: request.subject, capability: resource.id, inputHash: hash({ query: request.query, fields: request.fields, scope: request.scope }), decision }); return { items, receiptId: receipt.id };
+    const receipt = await this.record({ status: 'succeeded', actor: receiptActor(request.subject), capability: resource.id, operation: 'read', resourceRefs: [{ id: resource.id }], inputHash: hash({ query: request.query, fields: request.fields, scope: request.scope }, this.confirmationKey), decision });
+    return { items, receiptId: receipt.id };
   }
   async prepare(request: { subject: Subject; capability: string; input: unknown; scope?: Scope; purpose?: string; context: RequestContext }): Promise<{ request: ExecutionRequest; inputHash: string; preview: { capability: string; input: unknown; sideEffects: string[] }; obligations: Obligation[] }> {
     const capability = this.capabilities.get(request.capability); if (!capability) throw new Error('CUP_CAPABILITY_NOT_FOUND');
     const errors = validateSchema(request.input, capability.inputSchema); if (errors.length) throw new Error(`CUP_INVALID_INPUT:${errors.join(';')}`);
-    const inputHash = hash(request.input); const decision = await this.authorize({ ...request, operation: 'execute', resource: capability, proposedInput: request.input }); if (decision.effect !== 'allow') throw new Error(`CUP_NOT_AUTHORIZED:${decision.reasonCode}`);
-    this.prepared.set(decision.requestId, decision); return { request: { ...request, requestId: decision.requestId, operation: 'execute', resource: capability }, inputHash, preview: { capability: capability.id, input: request.input, sideEffects: capability.sideEffects }, obligations: decision.obligations };
+    const operation = capability.operation;
+    const decision = await this.authorize({ ...request, operation, resource: capability, proposedInput: request.input });
+    if (decision.effect !== 'allow') throw new Error(`CUP_NOT_AUTHORIZED:${decision.reasonCode}`);
+    const inputHash = canonicalConfirmationHash({ capability: capability.id, operation, input: request.input, policyVersion: decision.policyVersion }, this.confirmationKey);
+    this.prepared.set(decision.requestId, decision); return { request: { ...request, requestId: decision.requestId, operation, resource: capability }, inputHash, preview: { capability: capability.id, input: request.input, sideEffects: capability.sideEffects }, obligations: decision.obligations };
   }
   async execute(request: ExecutionRequest): Promise<Receipt> {
-    const capability = this.capabilities.get(request.capability); const inputHash = hash(request.input);
-    if (!capability) return this.record({ status: 'denied', actor: request.subject, capability: request.capability, inputHash, decision: await this.authorize({ ...request, operation: 'execute', resource: { id: request.capability } }) });
-    if (capability.idempotency === 'required' && !request.idempotencyKey) return this.record({ status: 'denied', actor: request.subject, capability: capability.id, inputHash, decision: this.denial(request, 'IDEMPOTENCY_KEY_REQUIRED') });
-    if (request.actionToken) { const token = this.actionTokens.get(request.actionToken); if (!token || token.capability !== capability.id || token.subjectId !== request.subject.id || token.audience !== (request.context.channel ?? 'default') || token.policyVersion !== this.policy.version() || token.expiresAt <= this.clock().getTime()) return this.record({ status: 'denied', actor: request.subject, capability: capability.id, inputHash, decision: this.denial(request, 'INVALID_ACTION_TOKEN') }); }
+    const capability = this.capabilities.get(request.capability);
+    const actor = receiptActor(request.subject);
+    const inputHash = capability
+      ? canonicalConfirmationHash({ capability: capability.id, operation: capability.operation, input: request.input, policyVersion: this.policy.version() }, this.confirmationKey)
+      : canonicalConfirmationHash({ capability: request.capability, operation: request.operation ?? 'execute', input: request.input, policyVersion: this.policy.version() }, this.confirmationKey);
+    if (!capability) return this.recordDenied({ status: 'denied', actor, capability: request.capability, operation: request.operation ?? 'execute', inputHash, decision: await this.authorize({ ...request, operation: request.operation ?? 'execute', resource: { id: request.capability } }) });
+    const operation = capability.operation;
+    const refs = resourceRefsFor(operation, capability.id, request.input);
+    if (operation === 'move') {
+      const body = asRecord(request.input);
+      if (typeof body?.id !== 'string' || typeof body.toType !== 'string') {
+        return this.recordDenied({ status: 'denied', actor, capability: capability.id, operation, resourceRefs: refs, inputHash, decision: this.denial(request, 'INVALID_INPUT') });
+      }
+    }
+    if (capability.idempotency === 'required' && !request.idempotencyKey) return this.recordDenied({ status: 'denied', actor, capability: capability.id, operation, resourceRefs: refs, inputHash, decision: this.denial(request, 'IDEMPOTENCY_KEY_REQUIRED') });
+    if (request.actionToken) { const token = this.actionTokens.get(request.actionToken); if (!token || token.capability !== capability.id || token.subjectId !== request.subject.id || token.audience !== (request.context.channel ?? 'default') || token.policyVersion !== this.policy.version() || token.expiresAt <= this.clock().getTime()) return this.recordDenied({ status: 'denied', actor, capability: capability.id, operation, resourceRefs: refs, inputHash, decision: this.denial(request, 'INVALID_ACTION_TOKEN') }); }
     if (request.idempotencyKey) { const key = `${request.subject.id}:${capability.id}:${request.idempotencyKey}`; const prior = this.idempotency.get(key); if (prior) return prior; }
     const delegated = !!request.delegation;
-    if (delegated && !this.validDelegation(request.delegation!, request)) return this.record({ status: 'denied', actor: request.subject, capability: capability.id, inputHash, decision: this.denial(request, 'INVALID_DELEGATION') });
-    if (request.requestId && this.prepared.has(request.requestId) && this.prepared.get(request.requestId)?.policyVersion !== this.policy.version()) return this.record({ status: 'denied', actor: request.subject, capability: capability.id, inputHash, decision: this.denial(request, 'PREPARED_DECISION_STALE') });
-    const errors = validateSchema(request.input, capability.inputSchema); if (errors.length) return this.record({ status: 'denied', actor: request.subject, capability: capability.id, inputHash, decision: this.denial(request, 'INVALID_INPUT') });
-    let decision = await this.authorize({ ...request, operation: 'execute', resource: capability, proposedInput: request.input });
+    if (delegated && !this.validDelegation(request.delegation!, request, capability)) return this.recordDenied({ status: 'denied', actor, capability: capability.id, operation, resourceRefs: refs, inputHash, decision: this.denial(request, 'INVALID_DELEGATION') });
+    if (request.requestId && this.prepared.has(request.requestId) && this.prepared.get(request.requestId)?.policyVersion !== this.policy.version()) return this.recordDenied({ status: 'denied', actor, capability: capability.id, operation, resourceRefs: refs, inputHash, decision: this.denial(request, 'PREPARED_DECISION_STALE') });
+    const errors = validateSchema(request.input, capability.inputSchema); if (errors.length) return this.recordDenied({ status: 'denied', actor, capability: capability.id, operation, resourceRefs: refs, inputHash, decision: this.denial(request, 'INVALID_INPUT') });
+    let decision = await this.authorize({ ...request, operation, resource: capability, proposedInput: request.input });
     if (decision.effect !== 'allow' && delegated && decision.reasonCode === 'NO_MATCHING_ALLOW') decision = { ...decision, effect: 'allow', reasonCode: 'DELEGATED_ALLOW', matchedPolicies: [`delegation:${request.delegation!.id}`] };
-    if (decision.effect !== 'allow') return this.record({ status: 'denied', actor: request.subject, capability: capability.id, inputHash, decision });
+    if (decision.effect !== 'allow') return this.recordDenied({ status: 'denied', actor, capability: capability.id, operation, resourceRefs: refs, inputHash, decision });
     const requiresConfirmation = capability.confirmation !== 'none' || decision.obligations.some(obligation => obligation.type === 'preview_changes' || obligation.type === 'human_review' || obligation.type === 'require_confirmation');
-    if (requiresConfirmation && (!request.confirmation || request.confirmation.inputHash !== inputHash || request.confirmation.confirmedBy !== request.subject.id)) return this.record({ status: 'denied', actor: request.subject, capability: capability.id, inputHash, decision: { ...decision, effect: 'deny', reasonCode: 'CONFIRMATION_REQUIRED' }, confirmation: request.confirmation });
-    try { const result = await capability.handler(request.input, { ...request.context, requestId: decision.requestId, idempotencyKey: request.idempotencyKey, actorId: request.subject.id }); const receipt = await this.record({ status: 'succeeded', actor: request.subject, capability: capability.id, inputHash, decision, reversibleBy: capability.reversibility !== 'irreversible' ? capability.reverseCapability : undefined, resultSummary: result }); if (request.idempotencyKey) this.idempotency.set(`${request.subject.id}:${capability.id}:${request.idempotencyKey}`, receipt); return receipt; }
-    catch (error) { return this.record({ status: 'failed', actor: request.subject, capability: capability.id, inputHash, decision: { ...decision, reasonCode: 'HANDLER_FAILED' }, resultSummary: { error: error instanceof Error ? error.message : 'unknown error' } }); }
+    if (requiresConfirmation && (!request.confirmation || !hashesMatch(request.confirmation.inputHash, inputHash) || request.confirmation.confirmedBy !== request.subject.id)) {
+      return this.recordDenied({ status: 'denied', actor, capability: capability.id, operation, resourceRefs: refs, inputHash, decision: { ...decision, effect: 'deny', reasonCode: 'CONFIRMATION_REQUIRED' } });
+    }
+    try {
+      const result = await capability.handler(request.input, { ...request.context, requestId: decision.requestId, idempotencyKey: request.idempotencyKey, actorId: request.subject.id });
+      const resultSummary = this.summarizeResult({ operation, capability: capability.id, status: 'succeeded', result });
+      const receipt = await this.record({ status: 'succeeded', actor, capability: capability.id, operation, resourceRefs: refs, inputHash, decision, reversibleBy: capability.reversibility !== 'irreversible' ? capability.reverseCapability : undefined, resultSummary });
+      if (request.idempotencyKey) this.idempotency.set(`${request.subject.id}:${capability.id}:${request.idempotencyKey}`, receipt);
+      return receipt;
+    }
+    catch (error) {
+      const result = { error: error instanceof Error ? error.message : 'unknown error' };
+      return this.record({ status: 'failed', actor, capability: capability.id, operation, resourceRefs: refs, inputHash, decision: { ...decision, reasonCode: 'HANDLER_FAILED' }, resultSummary: this.summarizeResult({ operation, capability: capability.id, status: 'failed', result }) });
+    }
   }
   async delegate(request: { from: Subject; to: Subject; capability: string; operations: Operation[]; scope?: Scope; purpose?: string; expiresInMs: number }): Promise<DelegationGrant> {
     const resource = this.resources.get(request.capability); if (!resource) throw new Error('CUP_RESOURCE_NOT_FOUND'); const d = await this.authorize({ subject: request.from, operation: 'delegate', resource, purpose: request.purpose, scope: request.scope, context: { purpose: request.purpose } }); if (d.effect !== 'allow') throw new Error(`CUP_NOT_AUTHORIZED:${d.reasonCode}`);
@@ -208,10 +422,23 @@ export class CapabilityUI {
   revokeGrant(grantId: string): void { this.delegations.delete(grantId); }
   async reverse(receiptId: string, request: Omit<ExecutionRequest, 'capability' | 'input'> & { capability?: string }): Promise<Receipt> {
     const original = this.receipts.all().find(receipt => receipt.id === receiptId);
-    if (!original?.reversibleBy) return this.record({ status: 'denied', actor: request.subject, capability: request.capability ?? 'unknown', inputHash: hash({ receiptId }), decision: this.denial({ ...request, capability: request.capability ?? 'unknown', input: { receiptId } }, 'RECEIPT_NOT_REVERSIBLE') });
+    if (!original?.reversibleBy) return this.recordDenied({ status: 'denied', actor: receiptActor(request.subject), capability: request.capability ?? 'unknown', operation: 'execute', inputHash: hash({ receiptId }, this.confirmationKey), decision: this.denial({ ...request, capability: request.capability ?? 'unknown', input: { receiptId } }, 'RECEIPT_NOT_REVERSIBLE') });
     return this.execute({ ...request, capability: request.capability ?? original.reversibleBy, input: { receiptId, original: original.resultSummary }, context: { ...request.context, purpose: request.purpose ?? 'reverse' } });
   }
-  confirm(token: string, input: unknown, subjectId: string): Confirmation { const action = this.actionTokens.get(token); if (!action || action.subjectId !== subjectId || action.expiresAt <= this.clock().getTime()) throw new Error('INVALID_ACTION_TOKEN'); return { inputHash: hash(input), confirmedBy: subjectId }; }
+  confirm(token: string, input: unknown, subjectId: string): Confirmation {
+    const action = this.actionTokens.get(token);
+    if (!action || action.subjectId !== subjectId || action.expiresAt <= this.clock().getTime()) throw new Error('INVALID_ACTION_TOKEN');
+    const capability = this.capabilities.get(action.capability);
+    return {
+      inputHash: canonicalConfirmationHash({
+        capability: action.capability,
+        operation: capability?.operation ?? 'execute',
+        input,
+        policyVersion: action.policyVersion,
+      }, this.confirmationKey),
+      confirmedBy: subjectId,
+    };
+  }
   async subscribe(request: { subject: Subject; resource: string; events: string[]; context: RequestContext }): Promise<Subscription> {
     const resource = this.resources.get(request.resource); if (!resource) throw new Error('CUP_RESOURCE_NOT_FOUND');
     const decision = await this.authorize({ subject: request.subject, operation: 'read', resource, context: request.context });
@@ -224,9 +451,32 @@ export class CapabilityUI {
     };
   }
   publish(event: ResourceEvent): void { for (const listener of this.listeners.get(event.resource.id) ?? []) listener(event); }
-  private validDelegation(grant: DelegationGrant, request: ExecutionRequest): boolean { return this.delegations.get(grant.id) === grant && grant.to.id === request.subject.id && grant.capability === request.capability && grant.operations.includes('execute') && new Date(grant.expiresAt) > this.clock() && (!grant.purpose || grant.purpose === request.purpose) && matchesScope(grant.scope, request.scope); }
+  private validDelegation(grant: DelegationGrant, request: ExecutionRequest, capability: Capability): boolean {
+    return this.delegations.get(grant.id) === grant && grant.to.id === request.subject.id && grant.capability === request.capability && grant.operations.includes(capability.operation) && new Date(grant.expiresAt) > this.clock() && (!grant.purpose || grant.purpose === request.purpose) && matchesScope(grant.scope, request.scope);
+  }
   private denial(request: ExecutionRequest, reasonCode: string): Decision { return { requestId: request.requestId ?? this.nonce(), effect: 'deny', reasonCode, matchedPolicies: [], obligations: [], policyVersion: this.policy.version() }; }
-  private async record(input: Omit<Receipt, 'id' | 'createdAt'>): Promise<Receipt> { const receipt = { ...input, id: this.nonce(), createdAt: this.clock().toISOString() }; await this.receipts.append(receipt); return receipt; }
+  private shouldWriteDenied(context: DeniedReceiptContext): boolean {
+    const setting = this.writeDeniedReceipts;
+    if (setting === false) return false;
+    if (typeof setting === 'function') return setting(context);
+    return true;
+  }
+  private async recordDenied(input: Omit<Receipt, 'id' | 'createdAt'>): Promise<Receipt> {
+    const receipt = { ...input, status: 'denied' as const, resultSummary: undefined, confirmation: undefined, id: this.nonce(), createdAt: this.clock().toISOString() };
+    delete receipt.resultSummary;
+    if (this.shouldWriteDenied({ operation: receipt.operation ?? 'execute', capability: receipt.capability, actor: receipt.actor, reasonCode: receipt.decision.reasonCode, subject: undefined })) {
+      try { await this.receipts.append(receipt); }
+      catch (error) {
+        console.error('CUP denied-receipt write failed', error);
+      }
+    }
+    return receipt;
+  }
+  private async record(input: Omit<Receipt, 'id' | 'createdAt'>): Promise<Receipt> {
+    const receipt = { ...input, id: this.nonce(), createdAt: this.clock().toISOString() };
+    await this.receipts.append(receipt);
+    return receipt;
+  }
 }
 
 export interface ResourceEvent { resource: ResourceRef; type: string; data?: unknown; }
@@ -235,16 +485,48 @@ export interface IdentityAdapter { resolve(request: unknown): Promise<Subject> |
 export interface PolicyAdapter { authorize(request: AuthorizationRequest): Promise<Decision> | Decision; policyVersion(): string; }
 export interface CapabilityAdapter { capabilityId: string; invoke(input: unknown, context: ExecutionContext): Promise<unknown>; }
 export interface RendererAdapter<T> { render(view: AuthorizedView, target: T): unknown; }
-export interface CapabilityUIOptions { registry?: Array<Resource | Capability>; receipts?: ReceiptSink; clock?: Clock; nonce?: NonceProvider; }
+export interface CapabilityUIOptions {
+  registry?: Array<Resource | Capability>;
+  receipts?: ReceiptSink;
+  clock?: Clock;
+  nonce?: NonceProvider;
+  /** HMAC key for confirmation hashes. When omitted, CUP falls back to plain SHA-256 (brute-forceable for short inputs). */
+  confirmationKey?: string;
+  /** When false or when the function returns false, denied receipts are not persisted. Default true. */
+  writeDeniedReceipts?: WriteDeniedReceipts;
+  /** Host hook for receipt result summaries. Default drops delete bodies and keeps ids/counts only. */
+  summarizeResult?: (context: ResultSummaryContext) => unknown | undefined;
+}
 export function createCapabilityUI(options: CapabilityUIOptions = {}): CapabilityUI { const cup = new CapabilityUI(options); for (const item of options.registry ?? []) cup.register(item); return cup; }
 /** Convenience: creates a CapabilityUI and documents that the policy starts closed. Use this at the top of host setup to make the deny-by-default guarantee explicit. */
 export function denyByDefault(options: CapabilityUIOptions = {}): CapabilityUI { return createCapabilityUI(options); }
 export function verifyActionToken(view: AuthorizedView, token: string): AuthorizedCapability | undefined { return view.capabilities.find(capability => capability.actionToken === token); }
-export function canonicalInputHash(input: unknown): string { return hash(input); }
+export function canonicalInputHash(input: unknown, confirmationKey?: string): string { return hash(input, confirmationKey); }
+export function canonicalConfirmationHash(binding: { capability: string; operation: Operation; input: unknown; policyVersion?: string }, confirmationKey?: string): string {
+  return hash(binding, confirmationKey);
+}
+export function hashesMatch(left: string, right: string): boolean {
+  const a = Buffer.from(left);
+  const b = Buffer.from(right);
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
+export function operationFromCapabilityId(capabilityId: string): Operation {
+  const suffix = capabilityId.split('.').pop() ?? '';
+  return isKnownOperation(suffix) ? suffix : 'read';
+}
+function applyDeleteDefaults(resource: Resource | Capability): Resource | Capability {
+  if (resource.type !== 'capability' || !('handler' in resource) || resource.operation !== 'delete') return resource;
+  return { ...resource, risk: resource.risk ?? 'high', confirmation: resource.confirmation ?? 'explicit' };
+}
 export function subject(id: string, attributes: Record<string, unknown> = {}, authenticated = true): Subject { return { id, type: id.startsWith('agent:') ? 'agent' : 'user', authenticated, attributes }; }
 export function resource(id: string, version = '1.0'): ResourceRef { return { id, version }; }
 export function capability(id: string): ResourceRef { return { id }; }
-export function defineCapability(config: Omit<Capability, 'type'>): Capability { return { ...config, type: 'capability' }; }
+export type DefineCapabilityInput = Omit<Capability, 'type' | 'risk' | 'confirmation'> & { risk?: Risk; confirmation?: ConfirmationMode };
+export function defineCapability(config: DefineCapabilityInput): Capability {
+  const isDelete = config.operation === 'delete';
+  return { ...config, type: 'capability', risk: config.risk ?? (isDelete ? 'high' : 'medium'), confirmation: config.confirmation ?? (isDelete ? 'explicit' : 'none') };
+}
 export function inMemoryReceipts(): MemoryReceiptSink { return new MemoryReceiptSink(); }
 export const conditions = {
   subjectIs: (id: string): Condition => request => request.subject.id === id,
@@ -280,11 +562,10 @@ export function createMCPServer(options: { cup: CapabilityUI; name: string; auth
     try {
       const params = request.params ?? {}; const subjectValue = options.authenticate ? await options.authenticate(request) : subject('service:mcp'); const context = (params.context as RequestContext | undefined) ?? {};
       const session: MCPSession = { id: randomUUID(), subject: subjectValue, purpose: context.purpose, transport: context.channel === 'stdio' ? 'stdio' : 'streamable_http', policyVersion: cup.policy.version(), createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 24 * 60 * 60_000).toISOString() };
-      if (request.method === 'initialize') return { jsonrpc: '2.0', id: request.id, result: { protocolVersion: '2025-06-18', serverInfo: { name: options.name, version: '0.2.0' }, capabilities: { resources: { subscribe: true }, tools: {}, prompts: { listChanged: false } }, _cup: { session } } };
+      if (request.method === 'initialize') return { jsonrpc: '2.0', id: request.id, result: { protocolVersion: '2025-06-18', serverInfo: { name: options.name, version: '0.3.0' }, capabilities: { resources: { subscribe: true }, tools: {}, prompts: { listChanged: false } }, _cup: { session, operations: OPERATIONS } } };
       if (request.method === 'resources/list') return { jsonrpc: '2.0', id: request.id, result: { resources: await cup.discover({ subject: subjectValue, purpose: context.purpose, context }) } };
       if (request.method === 'resources/read') { const uri = String(params.uri ?? ''); const id = uri.replace(/^cup:\/\//, ''); return { jsonrpc: '2.0', id: request.id, result: await cup.read({ subject: subjectValue, resource: id, purpose: context.purpose, context }) }; }
       if (request.method === 'resources/templates/list') {
-        // Returns inspectable resources as URI templates so clients can parameterize reads.
         const view = await cup.project({ subject: subjectValue, context });
         const templates = view.resources.filter(r => r.visibility === 'inspectable' || r.visibility === 'readable' || r.visibility === 'usable').map(r => ({ uriTemplate: `cup://${r.ref.id}`, name: r.ref.id, schema: r.schema }));
         return { jsonrpc: '2.0', id: request.id, result: { resourceTemplates: templates } };

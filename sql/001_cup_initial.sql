@@ -108,7 +108,9 @@ create table if not exists cup_receipts (
   actor_id text not null references cup_subjects(id),
   actor_type text not null,
   capability_id text not null,
-  input_hash text not null,
+  operation text,
+  resource_refs jsonb,
+  input_hash text,
   decision jsonb not null,
   confirmation jsonb,
   result_summary jsonb,
@@ -126,3 +128,6 @@ create table if not exists cup_policy_revisions (
 );
 insert into cup_policy_revisions(singleton, version) values (true, 0)
 on conflict (singleton) do nothing;
+insert into cup_subjects (id, subject_type, authenticated, attributes)
+values ('anonymous', 'service', false, '{}'::jsonb)
+on conflict (id) do nothing;

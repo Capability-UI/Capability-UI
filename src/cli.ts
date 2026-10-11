@@ -1,5 +1,5 @@
 import { pathToFileURL } from 'node:url';
-import { canonicalInputHash, createMCPServer, type CapabilityUI, type Confirmation, type MCPPrompt, type MCPRequest, type MCPResponse, type Subject } from './runtime.js';
+import { createMCPServer, type CapabilityUI, type Confirmation, type MCPPrompt, type MCPRequest, type MCPResponse, type Subject } from './runtime.js';
 
 export interface CupCliHost {
   cup: CapabilityUI;
@@ -158,8 +158,9 @@ export async function runCupCli(options: CupCliOptions): Promise<CupCliResult> {
       purpose: parsed.purpose ?? parsed.context.purpose,
       channel: parsed.context.channel ?? 'cli',
     };
-    const confirmation: Confirmation | undefined = parsed.confirm && parsed.subjectId
-      ? { inputHash: canonicalInputHash(parsed.args), confirmedBy: parsed.subjectId }
+    const capabilityName = typeof extra.name === 'string' ? extra.name : undefined;
+    const confirmation: Confirmation | undefined = parsed.confirm && parsed.subjectId && capabilityName
+      ? { inputHash: host.cup.confirmationHash(capabilityName, parsed.args), confirmedBy: parsed.subjectId }
       : undefined;
     const request: MCPRequest = {
       jsonrpc: '2.0',

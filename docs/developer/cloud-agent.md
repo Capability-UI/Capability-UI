@@ -10,7 +10,7 @@
 | `.cursor/install.sh` | Idempotent setup: install + build core, install examples, install + build the sibling site when present |
 | `.cursor/start.sh` | Launches the combined marketing + `/play` host when the `Website` sibling exists; otherwise stays idle |
 
-The default Cursor base image already provides Node 22, `git`, and `curl`, so no Dockerfile is used. The package requires Node `>=20`.
+The default Cursor base image already provides Node 22, `git`, and `curl`, so no Dockerfile is used. The package requires Node `>=22.5`.
 
 ## Install
 
@@ -40,7 +40,7 @@ The marketing site is a separate repository ([Capability-UI/Website](https://git
 Full local checks used to validate the environment:
 
 ```bash
-npm run build && npm run check && npm test   # core: build, typecheck, 27 tests
+npm run build && npm run check && npm test   # core: build, typecheck, node tests
 npm --prefix examples test                    # examples: 5 smoke tests
 bash .cursor/install.sh                        # idempotent setup, run twice
 ```

@@ -47,11 +47,12 @@ export function allowExecute(
     id: string;
     principal: PrincipalSelector;
     resourceId: string;
+    operation?: Operation;
     priority?: number;
     obligations?: Obligation[];
   },
 ): void {
-  allowPrincipal(cup, { ...options, operations: ACTION_OPS });
+  allowPrincipal(cup, { ...options, operations: [options.operation ?? ACTION_OPS[0]!] });
 }
 
 export function allowDelegate(

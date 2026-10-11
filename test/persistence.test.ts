@@ -4,6 +4,9 @@ import {
   openNodeSqlite,
   SqliteCupPersistence,
   CUP_SQLITE_SCHEMA,
+  CUP_SQLITE_V0_2_RECEIPTS_SCHEMA,
+  migrateSqliteCupSchema,
+  PostgresPersistence,
   type DelegationGrant,
   type Receipt,
 } from '../src/index.js';
@@ -50,8 +53,8 @@ test('sqlite persistence: appendReceipt + filtered receipts', async () => {
   const { p, close } = setup();
   const decision = { requestId: 'r1', effect: 'allow' as const, reasonCode: 'ALLOWED', matchedPolicies: [], obligations: [], policyVersion: 'policy-0' };
   const at = new Date().toISOString();
-  await p.appendReceipt({ id: 'rc1', status: 'succeeded', actor: { id: 'agent:coder', type: 'agent' }, capability: 'workspace.read', inputHash: 'h', decision, resultSummary: { ok: true }, createdAt: at } as Receipt);
-  await p.appendReceipt({ id: 'rc2', status: 'denied', actor: { id: 'agent:coder', type: 'agent' }, capability: 'workspace.bash', inputHash: 'h', decision: { ...decision, requestId: 'r2' }, createdAt: at } as Receipt);
+  await p.appendReceipt({ id: 'rc1', status: 'succeeded', actor: { id: 'agent:coder', type: 'agent' }, capability: 'workspace.read', operation: 'read', inputHash: 'h', decision, resultSummary: { id: 'w1' }, createdAt: at } as Receipt);
+  await p.appendReceipt({ id: 'rc2', status: 'denied', actor: { id: 'agent:coder', type: 'agent' }, capability: 'workspace.bash', operation: 'execute', decision: { ...decision, requestId: 'r2' }, createdAt: at } as Receipt);
 
   assert.equal((await p.receipts()).length, 2);
   const denied = await p.receipts({ status: 'denied' });
@@ -59,7 +62,10 @@ test('sqlite persistence: appendReceipt + filtered receipts', async () => {
   assert.equal(denied[0]?.capability, 'workspace.bash');
   const reads = await p.receipts({ capability: 'workspace.read' });
   assert.equal(reads.length, 1);
-  assert.deepEqual(reads[0]?.resultSummary, { ok: true });
+  assert.deepEqual(reads[0]?.resultSummary, { id: 'w1' });
+  assert.equal(reads[0]?.operation, 'read');
+  assert.equal(denied[0]?.operation, 'execute');
+  assert.equal(denied[0]?.inputHash, undefined);
   close();
 });
 
@@ -104,3 +110,147 @@ test('sqlite persistence: prepared action upsert + lookup', async () => {
   assert.equal(await p.preparedAction('missing'), undefined);
   close();
 });
+
+test('sqlite migrateSqliteCupSchema upgrades a 0.2.0 receipts table in place', async () => {
+  const handle = openNodeSqlite(':memory:');
+  handle.exec(CUP_SQLITE_V0_2_RECEIPTS_SCHEMA);
+  const decision = JSON.stringify({ requestId: 'r1', effect: 'allow', reasonCode: 'ALLOWED', matchedPolicies: [], obligations: [], policyVersion: 'policy-0' });
+  const at = '2030-01-01T00:00:00.000Z';
+  await handle.client.query(
+    'insert into cup_receipts (id, request_id, status, actor_id, actor_type, capability_id, input_hash, decision, result_summary, created_at) values (?,?,?,?,?,?,?,?,?,?)',
+    ['old-exec', 'req-1', 'succeeded', 'user:john', 'user', 'mail.execute', 'hash-1', decision, JSON.stringify({ sent: true }), at],
+  );
+  await handle.client.query(
+    'insert into cup_receipts (id, request_id, status, actor_id, actor_type, capability_id, input_hash, decision, result_summary, created_at) values (?,?,?,?,?,?,?,?,?,?)',
+    ['old-read', 'req-2', 'succeeded', 'user:john', 'user', 'notes.john', 'hash-2', decision, JSON.stringify({ title: 'kept' }), at],
+  );
+  await migrateSqliteCupSchema(handle);
+  await migrateSqliteCupSchema(handle);
+  const p = new SqliteCupPersistence(handle.client);
+  const rows = await p.receipts();
+  assert.equal(rows.length, 2);
+  const exec = rows.find(row => row.id === 'old-exec');
+  const read = rows.find(row => row.id === 'old-read');
+  assert.equal(exec?.operation, 'execute');
+  assert.equal(exec?.inputHash, 'hash-1');
+  assert.deepEqual(exec?.resultSummary, { sent: true });
+  assert.equal(read?.operation, 'read');
+  assert.equal(read?.resultSummary && (read.resultSummary as { title: string }).title, 'kept');
+  const info = await handle.client.query<{ name: string; notnull: number }>('pragma table_info(cup_receipts)');
+  assert.equal(info.rows.find(col => col.name === 'input_hash')?.notnull, 0);
+  await p.appendReceipt({
+    id: 'new-denied', status: 'denied', actor: { id: 'anonymous', type: 'anonymous' },
+    capability: 'mail.execute', operation: 'execute',
+    decision: { requestId: 'req-3', effect: 'deny', reasonCode: 'NO_ACCOUNT', matchedPolicies: [], obligations: [], policyVersion: 'policy-0' },
+    createdAt: at,
+  } as Receipt);
+  assert.equal((await p.receipts()).length, 3);
+  handle.close();
+});
+
+test('sqlite persistence: scrubReceiptsForResource drops summaries', async () => {
+  const { p, close } = setup();
+  const decision = { requestId: 'r1', effect: 'allow' as const, reasonCode: 'ALLOWED', matchedPolicies: [], obligations: [], policyVersion: 'policy-0' };
+  const at = new Date().toISOString();
+  await p.appendReceipt({ id: 'rc1', status: 'succeeded', actor: { id: 'user:john', type: 'user' }, capability: 'notes.john', operation: 'read', resourceRefs: [{ id: 'notes.john' }], inputHash: 'h', decision, resultSummary: { title: 'secret' }, createdAt: at } as Receipt);
+  await p.appendReceipt({ id: 'rc2', status: 'succeeded', actor: { id: 'user:john', type: 'user' }, capability: 'mail.send', operation: 'execute', inputHash: 'h2', decision: { ...decision, requestId: 'r2' }, resultSummary: { sent: true }, createdAt: at } as Receipt);
+  assert.equal(await p.scrubReceiptsForResource('notes.john'), 1);
+  const notes = await p.receipts({ capability: 'notes.john' });
+  assert.equal(notes[0]?.resultSummary, undefined);
+  assert.equal(notes[0]?.inputHash, undefined);
+  const mail = await p.receipts({ capability: 'mail.send' });
+  assert.deepEqual(mail[0]?.resultSummary, { sent: true });
+  close();
+});
+
+function deniedReadReceipt(actorId: string, actorType: 'user' | 'agent' | 'service' | 'group' = 'user'): Receipt {
+  return {
+    id: 'denied-1',
+    status: 'denied',
+    actor: { id: actorId, type: actorType },
+    capability: 'notes.john',
+    operation: 'read',
+    decision: {
+      requestId: 'req-denied',
+      effect: 'deny',
+      reasonCode: 'NO_MATCHING_ALLOW',
+      matchedPolicies: [],
+      obligations: [],
+      policyVersion: 'policy-0',
+    },
+    createdAt: new Date().toISOString(),
+  } as Receipt;
+}
+
+test('sqlite appendReceipt persists a denied receipt for an authenticated actor with no prior subject row', async () => {
+  const { client, p, close } = setup();
+  const before = await client.query<{ id: string }>('select id from cup_subjects where id = ?', ['user:signed-in']);
+  assert.equal(before.rows.length, 0);
+  await p.appendReceipt(deniedReadReceipt('user:signed-in'));
+  const rows = await p.receipts({ actorId: 'user:signed-in', status: 'denied' });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0]?.id, 'denied-1');
+  assert.equal(rows[0]?.capability, 'notes.john');
+  const subject = await client.query<{ id: string; subject_type: string }>('select id, subject_type from cup_subjects where id = ?', ['user:signed-in']);
+  assert.equal(subject.rows[0]?.id, 'user:signed-in');
+  assert.equal(subject.rows[0]?.subject_type, 'user');
+  close();
+});
+
+test('postgres appendReceipt upserts a missing signed-in actor then inserts the denied receipt in one transaction', async () => {
+  const subjects = new Set<string>();
+  const inserted: string[] = [];
+  let inTxn = false;
+  const db = {
+    query: async <T>(sql: string, values?: readonly unknown[]) => {
+      const command = sql.trim().toLowerCase();
+      if (command === 'begin') { inTxn = true; return { rows: [] as T[] }; }
+      if (command === 'commit') { inTxn = false; return { rows: [] as T[] }; }
+      if (command === 'rollback') { inTxn = false; return { rows: [] as T[] }; }
+      if (/insert into cup_subjects/i.test(sql)) {
+        assert.equal(inTxn, true);
+        assert.match(sql, /on conflict \(id\) do nothing/i);
+        assert.equal(values?.[0], 'user:signed-in');
+        assert.equal(values?.[1], 'user');
+        subjects.add(String(values?.[0]));
+        return { rows: [] as T[] };
+      }
+      if (/insert into cup_receipts/i.test(sql)) {
+        assert.equal(inTxn, true);
+        const actorId = String(values?.[3]);
+        if (!subjects.has(actorId)) throw new Error('fk cup_receipts_actor_id_fkey');
+        inserted.push(String(values?.[0]));
+        return { rows: [] as T[] };
+      }
+      return { rows: [] as T[] };
+    },
+  };
+  const store = new PostgresPersistence(db);
+  await store.appendReceipt(deniedReadReceipt('user:signed-in'));
+  assert.ok(subjects.has('user:signed-in'));
+  assert.deepEqual(inserted, ['denied-1']);
+});
+
+test('postgres persistence: scrubReceiptsForResource issues an update', async () => {
+  const calls: Array<{ sql: string; values?: readonly unknown[] }> = [];
+  const db = {
+    query: async <T>(sql: string, values?: readonly unknown[]) => {
+      calls.push({ sql, values });
+      if (/from cup_receipts/i.test(sql) && /select/i.test(sql)) {
+        return {
+          rows: [{
+            id: 'r1', request_id: 'req', status: 'succeeded', actor_id: 'user:john', actor_type: 'user',
+            capability_id: 'notes.john', operation: 'read', resource_refs: [{ id: 'notes.john' }],
+            input_hash: 'h', decision: { requestId: 'req', effect: 'allow', reasonCode: 'ALLOWED', matchedPolicies: [], obligations: [], policyVersion: 'policy-0' },
+            result_summary: { title: 'secret' }, created_at: new Date().toISOString(),
+          }] as T[],
+        };
+      }
+      return { rows: [] as T[] };
+    },
+  };
+  const store = new PostgresPersistence(db);
+  assert.equal(await store.scrubReceiptsForResource('notes.john'), 1);
+  assert.ok(calls.some(call => /update cup_receipts set result_summary = null/i.test(call.sql)));
+});
+

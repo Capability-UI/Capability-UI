@@ -1,8 +1,26 @@
 import { DatabaseSync } from 'node:sqlite';
-import type { DelegationGrant, Policy, Receipt, Resource, Subject } from './runtime.js';
+import { operationFromCapabilityId, receiptReferencesResource, type DelegationGrant, type Policy, type Receipt, type Resource, type Subject } from './runtime.js';
 
 export interface SqlClient {
   query<T = unknown>(sql: string, values?: readonly unknown[]): Promise<{ rows: T[] }>;
+}
+
+async function inSqlTransaction(db: SqlClient, work: () => Promise<void>): Promise<void> {
+  await db.query('begin');
+  try {
+    await work();
+    await db.query('commit');
+  } catch (error) {
+    try { await db.query('rollback'); } catch { /* keep the original failure */ }
+    throw error;
+  }
+}
+
+function subjectRowFromActor(actor: Receipt['actor']): { id: string; type: string; authenticated: boolean } {
+  if (actor.type === 'anonymous' || actor.id === 'anonymous') {
+    return { id: actor.id, type: 'service', authenticated: false };
+  }
+  return { id: actor.id, type: actor.type, authenticated: true };
 }
 
 export interface CupPersistence {
@@ -11,6 +29,7 @@ export interface CupPersistence {
   policies(): Promise<Policy[]>;
   appendReceipt(receipt: Receipt): Promise<void>;
   receipts(query?: { actorId?: string; capability?: string; status?: Receipt['status'] }): Promise<Receipt[]>;
+  scrubReceiptsForResource(resourceId: string): Promise<number>;
   appendDelegation(grant: DelegationGrant): Promise<void>;
   delegations(subjectId?: string): Promise<DelegationGrant[]>;
   revokeGrant(grantId: string): Promise<void>;
@@ -97,7 +116,9 @@ create table if not exists cup_receipts (
   actor_id text not null references cup_subjects(id),
   actor_type text not null,
   capability_id text not null,
-  input_hash text not null,
+  operation text,
+  resource_refs jsonb,
+  input_hash text,
   decision jsonb not null,
   result_summary jsonb,
   created_at timestamptz not null
@@ -110,6 +131,7 @@ create table if not exists cup_policy_revisions (
   updated_at timestamptz not null default now()
 );
 insert into cup_policy_revisions(singleton, version) values(true, 0) on conflict(singleton) do nothing;
+insert into cup_subjects (id, subject_type, authenticated, attributes) values ('anonymous', 'service', false, '{}'::jsonb) on conflict (id) do nothing;
 `;
 
 /** PostgreSQL read/write repository. Handler functions remain in application code. */
@@ -132,15 +154,22 @@ export class PostgresPersistence implements CupPersistence {
   }
 
   async appendReceipt(receipt: Receipt): Promise<void> {
-    await this.db.query(
-      'insert into cup_receipts (id, request_id, status, actor_id, actor_type, capability_id, input_hash, decision, result_summary, created_at) values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb,$10)',
-      [receipt.id, receipt.decision.requestId, receipt.status, receipt.actor.id, receipt.actor.type, receipt.capability, receipt.inputHash, JSON.stringify(receipt.decision), JSON.stringify(receipt.resultSummary ?? null), receipt.createdAt],
-    );
+    const actor = subjectRowFromActor(receipt.actor);
+    await inSqlTransaction(this.db, async () => {
+      await this.db.query(
+        'insert into cup_subjects (id, subject_type, authenticated, attributes) values ($1,$2,$3,$4::jsonb) on conflict (id) do nothing',
+        [actor.id, actor.type, actor.authenticated, '{}'],
+      );
+      await this.db.query(
+        'insert into cup_receipts (id, request_id, status, actor_id, actor_type, capability_id, operation, resource_refs, input_hash, decision, result_summary, created_at) values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10::jsonb,$11::jsonb,$12)',
+        [receipt.id, receipt.decision.requestId, receipt.status, receipt.actor.id, receipt.actor.type, receipt.capability, receipt.operation ?? null, JSON.stringify(receipt.resourceRefs ?? null), receipt.inputHash ?? null, JSON.stringify(receipt.decision), JSON.stringify(receipt.resultSummary ?? null), receipt.createdAt],
+      );
+    });
   }
 
   async receipts(query: { actorId?: string; capability?: string; status?: Receipt['status'] } = {}): Promise<Receipt[]> {
-    const result = await this.db.query<any>('select id, request_id, status, actor_id, actor_type, capability_id, input_hash, decision, result_summary, created_at from cup_receipts where ($1::text is null or actor_id = $1) and ($2::text is null or capability_id = $2) and ($3::text is null or status = $3) order by created_at desc', [query.actorId ?? null, query.capability ?? null, query.status ?? null]);
-    return result.rows.map(row => ({ id: row.id, status: row.status, actor: { id: row.actor_id, type: row.actor_type }, capability: row.capability_id, inputHash: row.input_hash, decision: row.decision, resultSummary: row.result_summary ?? undefined, createdAt: new Date(row.created_at).toISOString() }));
+    const result = await this.db.query<any>('select id, request_id, status, actor_id, actor_type, capability_id, operation, resource_refs, input_hash, decision, result_summary, created_at from cup_receipts where ($1::text is null or actor_id = $1) and ($2::text is null or capability_id = $2) and ($3::text is null or status = $3) order by created_at desc', [query.actorId ?? null, query.capability ?? null, query.status ?? null]);
+    return result.rows.map(row => ({ id: row.id, status: row.status, actor: { id: row.actor_id, type: row.actor_type }, capability: row.capability_id, operation: row.operation ?? undefined, resourceRefs: row.resource_refs ?? undefined, inputHash: row.input_hash ?? undefined, decision: row.decision, resultSummary: row.result_summary ?? undefined, createdAt: new Date(row.created_at).toISOString() }));
   }
 
   async appendDelegation(grant: DelegationGrant): Promise<void> { await this.db.query('insert into cup_delegation_grants (id, from_subject_id, to_subject_id, capability_id, operations, scope, purpose, expires_at) values ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7,$8)', [grant.id, grant.from.id, grant.to.id, grant.capability, JSON.stringify(grant.operations), JSON.stringify(grant.scope ?? null), grant.purpose ?? null, grant.expiresAt]); }
@@ -148,6 +177,17 @@ export class PostgresPersistence implements CupPersistence {
   async revokeGrant(grantId: string): Promise<void> { await this.db.query('update cup_delegation_grants set revoked_at = now() where id = $1 and revoked_at is null', [grantId]); }
   async savePreparedAction(action: { requestId: string; subjectId: string; capabilityId: string; inputHash: string; input: unknown; decision: unknown; policyVersion: string; expiresAt?: string }): Promise<void> { await this.db.query('insert into cup_prepared_actions (request_id, subject_id, capability_id, input_hash, input_json, decision, policy_version, expires_at) values ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7,$8) on conflict (request_id) do update set input_hash=$4,input_json=$5::jsonb,decision=$6::jsonb,policy_version=$7,expires_at=$8', [action.requestId, action.subjectId, action.capabilityId, action.inputHash, JSON.stringify(action.input), JSON.stringify(action.decision), action.policyVersion, action.expiresAt ?? null]); }
   async preparedAction(requestId: string) { const result = await this.db.query<any>('select request_id, subject_id, capability_id, input_hash, input_json, decision, policy_version, expires_at, consumed_at from cup_prepared_actions where request_id = $1', [requestId]); const row = result.rows[0]; return row ? { requestId: row.request_id, subjectId: row.subject_id, capabilityId: row.capability_id, inputHash: row.input_hash, input: row.input_json, decision: row.decision, policyVersion: row.policy_version, expiresAt: row.expires_at ? new Date(row.expires_at).toISOString() : undefined, consumedAt: row.consumed_at ? new Date(row.consumed_at).toISOString() : undefined } : undefined; }
+
+  async scrubReceiptsForResource(resourceId: string): Promise<number> {
+    const rows = await this.receipts();
+    let count = 0;
+    for (const receipt of rows) {
+      if (!receiptReferencesResource(receipt, resourceId)) continue;
+      await this.db.query('update cup_receipts set result_summary = null, input_hash = null where id = $1', [receipt.id]);
+      count++;
+    }
+    return count;
+  }
 }
 
 export function subjectFromRow(row: { id: string; subject_type: Subject['type']; authenticated: boolean; attributes: Record<string, unknown> }): Subject {
@@ -234,10 +274,12 @@ create table if not exists cup_receipts (
   id text primary key,
   request_id text not null,
   status text not null,
-  actor_id text not null,
+  actor_id text not null references cup_subjects(id),
   actor_type text not null,
   capability_id text not null,
-  input_hash text not null,
+  operation text,
+  resource_refs text,
+  input_hash text,
   decision text not null,
   result_summary text,
   created_at text not null
@@ -250,6 +292,7 @@ create table if not exists cup_policy_revisions (
   updated_at text not null default (datetime('now'))
 );
 insert or ignore into cup_policy_revisions(singleton, version) values(1, 0);
+insert or ignore into cup_subjects (id, subject_type, authenticated, attributes) values ('anonymous', 'service', 0, '{}');
 `;
 
 function parseJson(text: unknown): unknown {
@@ -277,6 +320,7 @@ export interface NodeSqliteHandle {
 export function openNodeSqlite(location = ':memory:'): NodeSqliteHandle {
   const db = new DatabaseSync(location);
   db.exec('pragma journal_mode = WAL;');
+  db.exec('pragma foreign_keys = ON;');
   const client: SqlClient = {
     async query<T = unknown>(sql: string, values: readonly unknown[] = []): Promise<{ rows: T[] }> {
       const params = values.map(value => {
@@ -293,6 +337,91 @@ export function openNodeSqlite(location = ':memory:'): NodeSqliteHandle {
     },
   };
   return { client, exec: (sql: string) => db.exec(sql), close: () => db.close() };
+}
+
+/** 0.2.0 SQLite receipts table. Used to seed upgrade tests; hosts should call migrateSqliteCupSchema. */
+export const CUP_SQLITE_V0_2_RECEIPTS_SCHEMA = /* sql */ `
+create table if not exists cup_receipts (
+  id text primary key,
+  request_id text not null,
+  status text not null,
+  actor_id text not null,
+  actor_type text not null,
+  capability_id text not null,
+  input_hash text not null,
+  decision text not null,
+  result_summary text,
+  created_at text not null
+);
+create index if not exists cup_receipts_actor_time on cup_receipts(actor_id, created_at desc);
+`;
+
+/**
+ * Upgrade an existing 0.2.0 SQLite CUP database in place with no receipt loss.
+ * Idempotent. Runs in one transaction: adds operation/resource_refs, rebuilds the
+ * receipts table when input_hash is NOT NULL, copies every row, then backfills
+ * operation from the capability suffix.
+ */
+export async function migrateSqliteCupSchema(handle: NodeSqliteHandle): Promise<void> {
+  const tables = await handle.client.query<{ name: string }>("select name from sqlite_master where type = 'table' and name = 'cup_receipts'");
+  if (!tables.rows.length) return;
+  const info = await handle.client.query<{ name: string; notnull: number | bigint }>('pragma table_info(cup_receipts)');
+  const columns = new Map(info.rows.map(row => [row.name, row]));
+  const hasOperation = columns.has('operation');
+  const hasRefs = columns.has('resource_refs');
+  const inputHash = columns.get('input_hash');
+  const rebuild = !!inputHash && Number(inputHash.notnull) === 1;
+  handle.exec('BEGIN');
+  try {
+    handle.exec(`
+      create table if not exists cup_subjects (
+        id text primary key,
+        subject_type text not null,
+        authenticated integer not null default 1,
+        attributes text not null default '{}',
+        created_at text not null default (datetime('now'))
+      );
+      insert or ignore into cup_subjects (id, subject_type, authenticated, attributes) values ('anonymous', 'service', 0, '{}');
+    `);
+    if (rebuild) {
+      handle.exec(`
+        create table cup_receipts__v3 (
+          id text primary key,
+          request_id text not null,
+          status text not null,
+          actor_id text not null,
+          actor_type text not null,
+          capability_id text not null,
+          operation text,
+          resource_refs text,
+          input_hash text,
+          decision text not null,
+          result_summary text,
+          created_at text not null
+        );
+        insert into cup_receipts__v3 (id, request_id, status, actor_id, actor_type, capability_id, operation, resource_refs, input_hash, decision, result_summary, created_at)
+        select id, request_id, status, actor_id, actor_type, capability_id,
+          ${hasOperation ? 'operation' : 'null'},
+          ${hasRefs ? 'resource_refs' : 'null'},
+          input_hash, decision, result_summary, created_at
+        from cup_receipts;
+        drop table cup_receipts;
+        alter table cup_receipts__v3 rename to cup_receipts;
+        create index if not exists cup_receipts_actor_time on cup_receipts(actor_id, created_at desc);
+      `);
+    } else {
+      if (!hasOperation) handle.exec('alter table cup_receipts add column operation text');
+      if (!hasRefs) handle.exec('alter table cup_receipts add column resource_refs text');
+    }
+    const rows = await handle.client.query<{ id: string; capability_id: string }>('select id, capability_id from cup_receipts where operation is null or operation = \'\'');
+    for (const row of rows.rows) {
+      await handle.client.query('update cup_receipts set operation = ? where id = ?', [operationFromCapabilityId(row.capability_id), row.id]);
+    }
+    handle.exec('COMMIT');
+  } catch (error) {
+    handle.exec('ROLLBACK');
+    throw error;
+  }
 }
 
 /** SQLite read/write repository. Handler functions remain in application code. */
@@ -330,10 +459,17 @@ export class SqliteCupPersistence implements CupPersistence {
   }
 
   async appendReceipt(receipt: Receipt): Promise<void> {
-    await this.db.query(
-      'insert into cup_receipts (id, request_id, status, actor_id, actor_type, capability_id, input_hash, decision, result_summary, created_at) values (?,?,?,?,?,?,?,?,?,?)',
-      [receipt.id, receipt.decision.requestId, receipt.status, receipt.actor.id, receipt.actor.type, receipt.capability, receipt.inputHash, JSON.stringify(receipt.decision), JSON.stringify(receipt.resultSummary ?? null), receipt.createdAt],
-    );
+    const actor = subjectRowFromActor(receipt.actor);
+    await inSqlTransaction(this.db, async () => {
+      await this.db.query(
+        'insert into cup_subjects (id, subject_type, authenticated, attributes) values (?,?,?,?) on conflict(id) do nothing',
+        [actor.id, actor.type, actor.authenticated, '{}'],
+      );
+      await this.db.query(
+        'insert into cup_receipts (id, request_id, status, actor_id, actor_type, capability_id, operation, resource_refs, input_hash, decision, result_summary, created_at) values (?,?,?,?,?,?,?,?,?,?,?,?)',
+        [receipt.id, receipt.decision.requestId, receipt.status, receipt.actor.id, receipt.actor.type, receipt.capability, receipt.operation ?? null, JSON.stringify(receipt.resourceRefs ?? null), receipt.inputHash ?? null, JSON.stringify(receipt.decision), JSON.stringify(receipt.resultSummary ?? null), receipt.createdAt],
+      );
+    });
   }
 
   async receipts(query: { actorId?: string; capability?: string; status?: Receipt['status'] } = {}): Promise<Receipt[]> {
@@ -343,8 +479,19 @@ export class SqliteCupPersistence implements CupPersistence {
     if (query.capability) { clauses.push('capability_id = ?'); params.push(query.capability); }
     if (query.status) { clauses.push('status = ?'); params.push(query.status); }
     const where = clauses.length ? `where ${clauses.join(' and ')}` : '';
-    const result = await this.db.query<any>(`select id, status, actor_id, actor_type, capability_id, input_hash, decision, result_summary, created_at from cup_receipts ${where} order by created_at desc`, params);
-    return result.rows.map(row => ({ id: row.id, status: row.status, actor: { id: row.actor_id, type: row.actor_type }, capability: row.capability_id, inputHash: row.input_hash, decision: parseJson(row.decision) as Receipt['decision'], resultSummary: parseNullableJson(row.result_summary), createdAt: row.created_at }));
+    const result = await this.db.query<any>(`select id, status, actor_id, actor_type, capability_id, operation, resource_refs, input_hash, decision, result_summary, created_at from cup_receipts ${where} order by created_at desc`, params);
+    return result.rows.map(row => ({
+      id: row.id,
+      status: row.status,
+      actor: { id: row.actor_id, type: row.actor_type },
+      capability: row.capability_id,
+      operation: row.operation ?? undefined,
+      resourceRefs: parseNullableJson(row.resource_refs) as Receipt['resourceRefs'],
+      inputHash: row.input_hash ?? undefined,
+      decision: parseJson(row.decision) as Receipt['decision'],
+      resultSummary: parseNullableJson(row.result_summary),
+      createdAt: row.created_at,
+    }));
   }
 
   async appendDelegation(grant: DelegationGrant): Promise<void> {
@@ -387,5 +534,16 @@ export class SqliteCupPersistence implements CupPersistence {
     const result = await this.db.query<any>('select request_id, subject_id, capability_id, input_hash, input_json, decision, policy_version, expires_at, consumed_at from cup_prepared_actions where request_id = ?', [requestId]);
     const row = result.rows[0];
     return row ? { requestId: row.request_id, subjectId: row.subject_id, capabilityId: row.capability_id, inputHash: row.input_hash, input: parseJson(row.input_json), decision: parseJson(row.decision), policyVersion: row.policy_version, expiresAt: row.expires_at ?? undefined, consumedAt: row.consumed_at ?? undefined } : undefined;
+  }
+
+  async scrubReceiptsForResource(resourceId: string): Promise<number> {
+    const rows = await this.receipts();
+    let count = 0;
+    for (const receipt of rows) {
+      if (!receiptReferencesResource(receipt, resourceId)) continue;
+      await this.db.query('update cup_receipts set result_summary = null, input_hash = null where id = ?', [receipt.id]);
+      count++;
+    }
+    return count;
   }
 }

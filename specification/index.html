@@ -70,7 +70,7 @@ interface Capability extends Resource {
 
 type Operation =
   | 'discover' | 'inspect' | 'read' | 'create' | 'update'
-  | 'delete' | 'execute' | 'share' | 'delegate';</div><h3>3.1 Resource and capability separation</h3><p>A tool is a resource whose operation is usually <span class="badge">execute</span>. Its schema can be inspectable even when invocation is denied. A data resource can expose read capabilities and mutation capabilities separately.</p><div class="tablewrap"><table><thead><tr><th>Permission</th><th>Discloses</th><th>Does not imply</th></tr></thead><tbody><tr><td><span class="badge">discover</span></td><td>That a resource exists</td><td>Schema, contents, or use</td></tr><tr><td><span class="badge">inspect</span></td><td>Metadata, schema, risk, side effects</td><td>Contents or execution</td></tr><tr><td><span class="badge">read</span></td><td>Contents, subject to field filters</td><td>Mutation or sharing</td></tr><tr><td><span class="badge">execute</span></td><td>Invocation of a named capability</td><td>Access to implementation data</td></tr><tr><td><span class="badge">share</span></td><td>Permission to grant access onward</td><td>Permission to use the resource personally</td></tr></tbody></table></div></div></section>
+  | 'delete' | 'move' | 'execute' | 'share' | 'delegate';</div><h3>3.1 Resource and capability separation</h3><p>A tool is a resource whose operation is usually <span class="badge">execute</span>. Its schema can be inspectable even when invocation is denied. A data resource can expose read capabilities and mutation capabilities separately.</p><div class="tablewrap"><table><thead><tr><th>Permission</th><th>Discloses</th><th>Does not imply</th></tr></thead><tbody><tr><td><span class="badge">discover</span></td><td>That a resource exists</td><td>Schema, contents, or use</td></tr><tr><td><span class="badge">inspect</span></td><td>Metadata, schema, risk, side effects</td><td>Contents or execution</td></tr><tr><td><span class="badge">read</span></td><td>Contents, subject to field filters</td><td>Mutation or sharing</td></tr><tr><td><span class="badge">execute</span></td><td>Invocation of a named capability</td><td>Access to implementation data</td></tr><tr><td><span class="badge">share</span></td><td>Permission to grant access onward</td><td>Permission to use the resource personally</td></tr></tbody></table></div></div></section>
 <section class="section" id="policy"><div class="wrap"><h2>4. Policy language</h2><p class="intro">Policies are declarative. The reference evaluator is deterministic, side-effect free, and usable without an agent or network call.</p><div class="code">interface Policy {
   id: string;
   effect: 'allow' | 'deny';
@@ -191,8 +191,9 @@ interface Receipt {
   status: 'succeeded' | 'failed' | 'denied' | 'pending';
   actor: SubjectRef;
   capability: string;
+  operation?: Operation;
   resourceRefs: ResourceRef[];
-  inputHash: string;
+  inputHash?: string;
   decision: Decision;
   confirmation?: Confirmation;
   resultSummary?: unknown;

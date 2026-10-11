@@ -1,6 +1,6 @@
 # Publishing `@capability-ui/core`
 
-Until the package is on the public npm registry, `0.2.0` is published to GitHub Packages under the `Capability-UI` org (`@capability-ui` scope). The tarball is MIT-licensed. Visibility is `restricted`, so consumers authenticate with a GitHub PAT that can read packages.
+Until the package is on the public npm registry, `0.3.0` is published to GitHub Packages under the `Capability-UI` org (`@capability-ui` scope). The tarball is MIT-licensed. Visibility is `restricted`, so consumers authenticate with a GitHub PAT that can read packages.
 
 ## Package layout
 
@@ -17,7 +17,7 @@ Until the package is on the public npm registry, `0.2.0` is published to GitHub 
 
 ## Publish from CI
 
-Workflow: `.github/workflows/package.yml`.
+Workflow: `.github/workflows/package.yml`. Jobs install Node from `.nvmrc` (22).
 
 The `publish` job needs `packages: write` on `GITHUB_TOKEN` (set on that job). Do not add a long-lived npm token for this path.
 
@@ -27,14 +27,14 @@ The org must allow that GitHub App installation to create packages. A 403 like `
 NODE_AUTH_TOKEN=TOKEN npm publish
 ```
 
-Publish `0.2.0` after this workflow is on `main`:
+Publish `0.3.0` after this workflow is on `main`:
 
-1. Confirm `package.json` `version` is `0.2.0`.
+1. Confirm `package.json` `version` is `0.3.0`.
 2. Tag the merge commit and push the tag:
 
 ```bash
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.3.0
+git push origin v0.3.0
 ```
 
 Or run **Actions > Package > Run workflow** (`workflow_dispatch`) on `main` if the version has not been published yet.
@@ -52,14 +52,14 @@ Use a PAT with `read:packages` (and SSO authorized for the `Capability-UI` org i
 ```
 
 ```bash
-npm i @capability-ui/core@0.2.0
+npm i @capability-ui/core@0.3.0
 ```
 
 Equivalent environment-based auth:
 
 ```bash
 export NODE_AUTH_TOKEN=TOKEN
-npm i @capability-ui/core@0.2.0
+npm i @capability-ui/core@0.3.0
 ```
 
 Package URL after the first successful publish: `https://github.com/orgs/Capability-UI/packages/npm/package/core`.
