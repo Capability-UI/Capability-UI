@@ -2,7 +2,7 @@
 
 ## 0.3.0
 
-Requires Node.js 22.5 or newer (`engines.node` is `>=22.5`, `.nvmrc` is `22`). Core uses the built-in `node:sqlite` module.
+Requires Node.js 22.5 or newer (`engines.node` is `>=22.5`, `.nvmrc` is `22`). Core uses the built-in `node:sqlite` module. Package CI now installs Node from `.nvmrc`.
 
 ### Receipts
 

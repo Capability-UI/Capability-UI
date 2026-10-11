@@ -17,7 +17,7 @@ Until the package is on the public npm registry, `0.3.0` is published to GitHub 
 
 ## Publish from CI
 
-Workflow: `.github/workflows/package.yml`.
+Workflow: `.github/workflows/package.yml`. Jobs install Node from `.nvmrc` (22).
 
 The `publish` job needs `packages: write` on `GITHUB_TOKEN` (set on that job). Do not add a long-lived npm token for this path.
 
