@@ -15,7 +15,7 @@ The TypeScript declarations in `src/index.ts` are the source of truth. This page
 - `new CapabilityUI(receipts | options)` creates a runtime. Options include `receipts`, `confirmationKey`, `writeDeniedReceipts`, and `summarizeResult`.
 - `register(resource)` registers a `Resource` or `Capability`.
 - `registerAdapter(adapter)` attaches a `ResourceAdapter` or `ExecutionAdapter` to a registered resource.
-- `authorize(request)` returns a `Decision`.
+- `authorize(request)` returns a `Decision`. Unmatched unauthenticated requests use `NO_ACCOUNT`; unmatched authenticated requests use `NO_MATCHING_ALLOW`.
 - `discover(request)` returns resources allowed for `discover`.
 - `project(request)` returns an `AuthorizedView` with resources and executable capabilities.
 - `read(request)` reads through a resource adapter and records a receipt.
@@ -44,8 +44,8 @@ import {
 - `defineCapability(config)` adds `type: 'capability'` to a capability definition.
 - `inMemoryReceipts()` creates a development/test `MemoryReceiptSink`.
 - `createCapabilityUI(options)` creates a runtime, optionally registering resources and injecting a receipt sink.
-- `canonicalInputHash(input, confirmationKey?)` exposes the confirmation digest (HMAC-SHA256 when a key is passed, else SHA-256).
-- `stripReceiptContent(receipt)` and `scrubReceiptsForResource(receipts, resourceId)` drop summaries and confirmation material after a hard delete.
+- `canonicalConfirmationHash({ capability, operation, input, policyVersion }, confirmationKey?)` is the confirmation digest. `canonicalInputHash` remains for non-confirmation hashing.
+- `stripReceiptContent(receipt)`, `scrubReceiptsForResource(receipts, resourceId)`, and `cup.scrubForResource(resourceId)` drop summaries and confirmation material after a hard delete. Persistence stores implement the same method.
 - `verifyActionToken(view, token)` finds a token in an authorized view for client-side routing.
 - `conditions.purposeIs(value)` matches the request purpose.
 - `conditions.recipientCountAtMost(max)` checks an array named `recipients` in proposed input.

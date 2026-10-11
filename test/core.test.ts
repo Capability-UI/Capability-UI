@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  ANONYMOUS_ACTOR,
   CapabilityUI,
   type Capability,
   type Resource,
@@ -8,15 +9,19 @@ import {
   type Receipt,
   defineCapability,
   capabilityToTool,
+  canonicalConfirmationHash,
   canonicalInputHash,
   createMCPServer,
+  hashesMatch,
   MemoryActionTokenService,
   MemoryReceiptSink,
+  pickIdsAndCounts,
   PostgresPersistence,
   CUP_POSTGRES_SCHEMA,
   OPERATIONS,
   scrubReceiptsForResource,
   stripReceiptContent,
+  subject,
 } from '../src/index.js';
 
 const john: Subject = {
@@ -343,12 +348,13 @@ test('denied read writes a receipt then throws', async () => {
 
 test('unauthenticated execute records a denied NO_ACCOUNT receipt', async () => {
   const cup = new CapabilityUI();
-  cup.register(sendMail(async () => ({ sent: true })));
+  cup.register({ ...sendMail(async () => ({ sent: true })), confirmation: 'none', idempotency: 'none' });
   const guest = { ...john, authenticated: false };
   const receipt = await cup.execute({ subject: guest, capability: 'mail.send', input: { body: 'secret-body' }, context: {} });
   assert.equal(receipt.status, 'denied');
   assert.equal(receipt.operation, 'execute');
   assert.equal(receipt.decision.reasonCode, 'NO_ACCOUNT');
+  assert.deepEqual(receipt.actor, ANONYMOUS_ACTOR);
   assert.equal(receipt.resultSummary, undefined);
   assert.equal(JSON.stringify(receipt).includes('secret-body'), false);
 });
@@ -468,8 +474,9 @@ test('confirmation hashes are HMAC when a host key is configured', async () => {
   cup.policy.allow({ id: 'mail', principal: { id: john.id }, operation: 'execute', resource: { id: 'mail.send' }, priority: 10 });
   const input = { to: ['a@example.com'], body: 'Hi' };
   const prepared = await cup.prepare({ subject: john, capability: 'mail.send', input, context: {} });
-  assert.equal(prepared.inputHash, canonicalInputHash(input, 'host-secret'));
-  assert.notEqual(prepared.inputHash, canonicalInputHash(input));
+  const bound = canonicalConfirmationHash({ capability: 'mail.send', operation: 'execute', input, policyVersion: cup.policy.version() }, 'host-secret');
+  assert.equal(prepared.inputHash, bound);
+  assert.notEqual(prepared.inputHash, canonicalInputHash(input, 'host-secret'));
   const denied = await cup.execute({
     subject: john, capability: 'mail.send', input, idempotencyKey: 'hmac-1',
     confirmation: { inputHash: canonicalInputHash(input), confirmedBy: john.id }, context: {},
@@ -514,4 +521,150 @@ test('MemoryReceiptSink.scrubForResource mutates matching receipts', async () =>
   assert.equal(sink.all()[0]?.resultSummary, undefined);
   assert.equal(sink.all()[0]?.status, 'succeeded');
 });
+
+test('unauthenticated execute records an anonymous actor even when a victim id is supplied', async () => {
+  const cup = new CapabilityUI();
+  cup.register({ ...sendMail(async () => ({ sent: true })), confirmation: 'none', idempotency: 'none' });
+  const victim = subject('user:victim', {}, false);
+  const receipt = await cup.execute({ subject: victim, capability: 'mail.send', input: { id: 'row-1' }, context: {} });
+  assert.equal(receipt.status, 'denied');
+  assert.equal(receipt.decision.reasonCode, 'NO_ACCOUNT');
+  assert.deepEqual(receipt.actor, ANONYMOUS_ACTOR);
+  assert.equal(JSON.stringify(receipt).includes('user:victim'), false);
+});
+
+test('confirmation hashes bind capability and operation so archive cannot confirm delete', async () => {
+  const cup = new CapabilityUI();
+  const input = { id: 'row-1' };
+  cup.register(defineCapability({
+    id: 'log.archive', version: '1.0', sensitivity: 'personal', schema: { type: 'object' },
+    operation: 'execute', inputSchema: { type: 'object' }, outputSchema: { type: 'object' },
+    sideEffects: [], risk: 'high', confirmation: 'explicit', idempotency: 'none', reversibility: 'irreversible',
+    handler: async () => ({ archived: true }),
+  }));
+  cup.register(defineCapability({
+    id: 'log.delete', version: '1.0', sensitivity: 'personal', schema: { type: 'object' },
+    operation: 'delete', inputSchema: { type: 'object' }, outputSchema: { type: 'object' },
+    sideEffects: [], idempotency: 'none', reversibility: 'irreversible',
+    handler: async () => ({ deleted: true }),
+  }));
+  cup.policy.allow({ id: 'a', principal: { id: john.id }, operation: 'execute', resource: { id: 'log.archive' }, priority: 10 });
+  cup.policy.allow({ id: 'd', principal: { id: john.id }, operation: 'delete', resource: { id: 'log.delete' }, priority: 10 });
+  const archived = await cup.prepare({ subject: john, capability: 'log.archive', input, context: {} });
+  const reused = await cup.execute({
+    subject: john, capability: 'log.delete', input,
+    confirmation: { inputHash: archived.inputHash, confirmedBy: john.id }, context: {},
+  });
+  assert.equal(reused.status, 'denied');
+  assert.equal(reused.decision.reasonCode, 'CONFIRMATION_REQUIRED');
+  const allowed = await cup.execute({
+    subject: john, capability: 'log.archive', input,
+    confirmation: { inputHash: archived.inputHash, confirmedBy: john.id }, context: {},
+  });
+  assert.equal(allowed.status, 'succeeded');
+});
+
+test('hashesMatch uses equal-length timing-safe compare', () => {
+  assert.equal(hashesMatch('abc', 'abc'), true);
+  assert.equal(hashesMatch('abc', 'abd'), false);
+  assert.equal(hashesMatch('abc', 'ab'), false);
+});
+
+test('denied receipt write failures do not replace CUP_NOT_AUTHORIZED', async () => {
+  const cup = new CapabilityUI({
+    receipts: {
+      async append() { throw new Error('fk_violation'); },
+      all() { return []; },
+    },
+  });
+  cup.register({ ...notes(), read: async () => [{ title: 'Brief' }] });
+  await assert.rejects(() => cup.read({ subject: subject('user:victim', {}, false), resource: 'notes.john', context: {} }), /CUP_NOT_AUTHORIZED:NO_ACCOUNT/);
+});
+
+test('scrubForResource also scrubs cached idempotent receipts', async () => {
+  const cup = new CapabilityUI();
+  cup.register({
+    ...sendMail(async () => ({ sent: true, body: 'secret-mail' })),
+    confirmation: 'none',
+    idempotency: 'supported',
+  });
+  cup.policy.allow({ id: 'mail', principal: { id: john.id }, operation: 'execute', resource: { id: 'mail.send' }, priority: 10 });
+  const first = await cup.execute({
+    subject: john, capability: 'mail.send', input: { to: ['a@example.com'], body: 'secret-mail' },
+    idempotencyKey: 'same-key', context: {},
+  });
+  assert.ok(first.inputHash);
+  cup.scrubForResource('mail.send');
+  const replay = await cup.execute({
+    subject: john, capability: 'mail.send', input: { to: ['a@example.com'], body: 'secret-mail' },
+    idempotencyKey: 'same-key', context: {},
+  });
+  assert.equal(replay.id, first.id);
+  assert.equal(replay.inputHash, undefined);
+  assert.equal(replay.resultSummary, undefined);
+  assert.equal(JSON.stringify(replay).includes('secret-mail'), false);
+});
+
+test('pickIdsAndCounts keeps only string or number ids array elements', () => {
+  const summary = pickIdsAndCounts({ ids: [{ id: 'x', note: 'private' }], count: 1 });
+  assert.deepEqual(summary, { count: 1 });
+  assert.equal(JSON.stringify(summary).includes('private'), false);
+  assert.equal(JSON.stringify(summary).includes('"x"'), false);
+});
+
+test('delete high-risk explicit confirmation defaults apply on direct register', async () => {
+  const cup = new CapabilityUI();
+  cup.register({
+    id: 'notes.purge', type: 'capability', version: '1.0', sensitivity: 'personal',
+    schema: { type: 'object' }, operation: 'delete', inputSchema: { type: 'object' }, outputSchema: { type: 'object' },
+    sideEffects: [], idempotency: 'none', reversibility: 'irreversible',
+    handler: async () => ({ ok: true }),
+  } as unknown as Capability);
+  cup.policy.allow({ id: 'p', principal: { id: john.id }, operation: 'delete', resource: { id: 'notes.purge' }, priority: 10 });
+  cup.policy.allow({ id: 'd', principal: { id: john.id }, operation: 'discover', resource: { id: 'notes.purge' }, priority: 10 });
+  const view = await cup.project({ subject: john, context: {} });
+  const cap = view.capabilities.find(item => item.id === 'notes.purge');
+  assert.equal(cap?.risk, 'high');
+  assert.equal(cap?.confirmation, 'explicit');
+});
+
+test('guest denials use NO_ACCOUNT; authenticated denials use NO_MATCHING_ALLOW; public guest allow still works', async () => {
+  const cup = new CapabilityUI();
+  cup.register({ ...notes(), id: 'notes.private', read: async () => [{ title: 'private' }] });
+  cup.register({ ...notes(), id: 'notes.public', read: async () => [{ title: 'public' }] });
+  cup.register({ ...sendMail(async () => ({ sent: true })), confirmation: 'none', idempotency: 'none' });
+  cup.register(defineCapability({
+    id: 'ping.public', version: '1.0', sensitivity: 'public', schema: { type: 'object' },
+    operation: 'execute', inputSchema: { type: 'object' }, outputSchema: { type: 'object' },
+    sideEffects: [], risk: 'low', confirmation: 'none', idempotency: 'none', reversibility: 'irreversible',
+    handler: async () => ({ ok: true }),
+  }));
+  cup.policy.allow({ id: 'public-read', principal: { any: true }, operation: 'read', resource: { id: 'notes.public' }, priority: 10 });
+  cup.policy.allow({ id: 'public-discover', principal: { any: true }, operation: 'discover', resource: { id: 'notes.public' }, priority: 10 });
+  cup.policy.allow({ id: 'public-exec', principal: { any: true }, operation: 'execute', resource: { id: 'ping.public' }, priority: 10 });
+  const guest = subject('user:guest', {}, false);
+
+  const guestDiscover = await cup.authorize({ subject: guest, operation: 'discover', resource: { id: 'notes.private' }, context: {} });
+  assert.equal(guestDiscover.reasonCode, 'NO_ACCOUNT');
+  const signedInDiscover = await cup.authorize({ subject: other, operation: 'discover', resource: { id: 'notes.private' }, context: {} });
+  assert.equal(signedInDiscover.reasonCode, 'NO_MATCHING_ALLOW');
+  await assert.rejects(() => cup.subscribe({ subject: guest, resource: 'notes.private', events: ['changed'], context: {} }), /CUP_NOT_AUTHORIZED:NO_ACCOUNT/);
+  await assert.rejects(() => cup.subscribe({ subject: other, resource: 'notes.private', events: ['changed'], context: {} }), /CUP_NOT_AUTHORIZED:NO_MATCHING_ALLOW/);
+  await assert.rejects(() => cup.read({ subject: guest, resource: 'notes.private', context: {} }), /CUP_NOT_AUTHORIZED:NO_ACCOUNT/);
+  await assert.rejects(() => cup.read({ subject: other, resource: 'notes.private', context: {} }), /CUP_NOT_AUTHORIZED:NO_MATCHING_ALLOW/);
+  const publicRead = await cup.read({ subject: guest, resource: 'notes.public', context: {} });
+  assert.deepEqual(publicRead.items, [{ title: 'public' }]);
+  const listed = await cup.discover({ subject: guest, context: {} });
+  assert.deepEqual(listed.map(item => item.ref.id), ['notes.public']);
+
+  const guestExec = await cup.execute({ subject: guest, capability: 'mail.send', input: {}, context: {} });
+  assert.equal(guestExec.status, 'denied');
+  assert.equal(guestExec.decision.reasonCode, 'NO_ACCOUNT');
+  const signedInExec = await cup.execute({ subject: other, capability: 'mail.send', input: {}, context: {} });
+  assert.equal(signedInExec.status, 'denied');
+  assert.equal(signedInExec.decision.reasonCode, 'NO_MATCHING_ALLOW');
+  const publicExec = await cup.execute({ subject: guest, capability: 'ping.public', input: {}, context: {} });
+  assert.equal(publicExec.status, 'succeeded');
+});
+
 

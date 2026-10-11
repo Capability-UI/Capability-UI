@@ -128,3 +128,6 @@ create table if not exists cup_policy_revisions (
 );
 insert into cup_policy_revisions(singleton, version) values (true, 0)
 on conflict (singleton) do nothing;
+insert into cup_subjects (id, subject_type, authenticated, attributes)
+values ('anonymous', 'service', false, '{}'::jsonb)
+on conflict (id) do nothing;

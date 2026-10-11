@@ -2,3 +2,6 @@
 alter table cup_receipts add column if not exists operation text;
 alter table cup_receipts add column if not exists resource_refs jsonb;
 alter table cup_receipts alter column input_hash drop not null;
+insert into cup_subjects (id, subject_type, authenticated, attributes)
+values ('anonymous', 'service', false, '{}'::jsonb)
+on conflict (id) do nothing;

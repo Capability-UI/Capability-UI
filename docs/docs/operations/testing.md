@@ -124,8 +124,9 @@ cup --host ./dist/setup.js --subject user:test \
 
 Test at least these cases:
 
-- no matching allow denies
-- unauthenticated protected subject denies
+- no matching allow denies authenticated callers with `NO_MATCHING_ALLOW`
+- unauthenticated protected read/execute (including discover-gated subscribe/read) denies with `NO_ACCOUNT`
+- public guest allows still succeed
 - discovery does not imply read
 - lower-priority allow cannot override a higher-priority deny
 - missing or mismatched scope denies

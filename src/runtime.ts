@@ -1,4 +1,4 @@
-import { createHash, createHmac, randomUUID } from 'node:crypto';
+import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 
 export const OPERATIONS = ['discover', 'inspect', 'read', 'create', 'update', 'delete', 'move', 'execute', 'share', 'delegate'] as const;
 export type Operation = (typeof OPERATIONS)[number];
@@ -74,7 +74,7 @@ export interface DelegationGrant { id: string; from: Subject; to: Subject; capab
 export interface ExecutionAdapter { capabilityId: string; invoke(input: unknown, context: ExecutionContext): Promise<unknown>; }
 export interface ResourceAdapter { resourceId: string; read(request: { subject: Subject; query?: Record<string, unknown>; fields?: string[]; scope?: Scope; context: RequestContext }): Promise<unknown[]>; }
 export interface ReceiptQuery { requestId?: string; actorId?: string; capability?: string; status?: Receipt['status']; }
-export interface ReceiptSink { append(receipt: Receipt): Promise<void>; all(): Receipt[]; find?(query: ReceiptQuery): Receipt[]; }
+export interface ReceiptSink { append(receipt: Receipt): Promise<void>; all(): Receipt[]; find?(query: ReceiptQuery): Receipt[]; scrubForResource?(resourceId: string): Receipt[]; }
 export interface DeniedReceiptContext { operation: Operation; capability: string; actor: Receipt['actor']; reasonCode: string; subject?: Subject; }
 export interface ResultSummaryContext { operation: Operation; capability: string; status: Receipt['status']; result: unknown; }
 export type WriteDeniedReceipts = boolean | ((context: DeniedReceiptContext) => boolean);
@@ -157,7 +157,7 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 }
 function receiptActor(subject: Subject | undefined): Receipt['actor'] {
-  if (!subject) return { ...ANONYMOUS_ACTOR };
+  if (!subject || !subject.authenticated) return { ...ANONYMOUS_ACTOR };
   return { id: subject.id, type: subject.type };
 }
 function isKnownOperation(value: string): value is Operation {
@@ -179,8 +179,13 @@ export function pickIdsAndCounts(result: unknown): unknown | undefined {
   if (!record) return undefined;
   const output: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(record)) {
-    if (key === 'id' || key === 'ids' || key.endsWith('Id') || key.endsWith('Ids')) {
-      if (typeof value === 'string' || typeof value === 'number' || Array.isArray(value)) output[key] = value;
+    if (key === 'id' || key.endsWith('Id')) {
+      if (typeof value === 'string' || typeof value === 'number') output[key] = value;
+    } else if (key === 'ids' || key.endsWith('Ids')) {
+      if (Array.isArray(value)) {
+        const ids = value.filter((item): item is string | number => typeof item === 'string' || typeof item === 'number');
+        if (ids.length) output[key] = ids;
+      }
     } else if (key === 'count' || key === 'length' || key.endsWith('Count')) {
       if (typeof value === 'number') output[key] = value;
     }
@@ -281,7 +286,30 @@ export class CapabilityUI {
       this.summarizeResult = options.summarizeResult ?? defaultSummarizeResult;
     }
   }
-  register(resource: Resource | Capability): void { this.resources.set(resource.id, resource); if (resource.type === 'capability' && 'handler' in resource) this.capabilities.set(resource.id, resource); }
+  register(resource: Resource | Capability): void {
+    const registered = applyDeleteDefaults(resource);
+    this.resources.set(registered.id, registered);
+    if (registered.type === 'capability' && 'handler' in registered) this.capabilities.set(registered.id, registered);
+  }
+  /** Scrub stored receipts and cached idempotent results that reference a resource id. */
+  scrubForResource(resourceId: string): Receipt[] {
+    for (const [key, receipt] of this.idempotency) {
+      if (receiptReferencesResource(receipt, resourceId)) this.idempotency.set(key, stripReceiptContent(receipt));
+    }
+    if ('scrubForResource' in this.receipts && typeof this.receipts.scrubForResource === 'function') {
+      return this.receipts.scrubForResource(resourceId);
+    }
+    return scrubReceiptsForResource(this.receipts.all(), resourceId);
+  }
+  confirmationHash(capabilityId: string, input: unknown, operation?: Operation): string {
+    const capability = this.capabilities.get(capabilityId);
+    return canonicalConfirmationHash({
+      capability: capabilityId,
+      operation: operation ?? capability?.operation ?? 'execute',
+      input,
+      policyVersion: this.policy.version(),
+    }, this.confirmationKey);
+  }
   registerAdapter(adapter: ResourceAdapter | ExecutionAdapter): void {
     const id = 'resourceId' in adapter ? adapter.resourceId : adapter.capabilityId;
     const resource = this.resources.get(id); if (!resource) throw new Error('CUP_RESOURCE_NOT_FOUND');
@@ -291,11 +319,11 @@ export class CapabilityUI {
   async authorize(request: AuthorizationRequest): Promise<Decision> {
     const requestId = request.requestId ?? this.nonce();
     if (!isKnownOperation(request.operation)) return { requestId, effect: 'deny', reasonCode: 'UNKNOWN_OPERATION', matchedPolicies: [], obligations: [], policyVersion: this.policy.version() };
-    if (!request.subject.authenticated && request.operation !== 'discover') return { requestId, effect: 'deny', reasonCode: 'NO_ACCOUNT', matchedPolicies: [], obligations: [], policyVersion: this.policy.version() };
     const matched = this.policy.matching(request); const priority = matched[0]?.priority;
     const effective = priority === undefined ? [] : matched.filter(rule => rule.priority === priority);
     const denied = effective.some(rule => rule.effect === 'deny'); const allowed = effective.some(rule => rule.effect === 'allow');
-    return { requestId, effect: denied ? 'deny' : allowed ? 'allow' : 'deny', reasonCode: denied ? 'EXPLICIT_DENY' : allowed ? 'ALLOWED' : 'NO_MATCHING_ALLOW', matchedPolicies: effective.map(rule => rule.id), obligations: obligationsOf(effective), policyVersion: this.policy.version(), expiresAt: effective.find(rule => rule.expiresAt)?.expiresAt };
+    const reasonCode = denied ? 'EXPLICIT_DENY' : allowed ? 'ALLOWED' : request.subject.authenticated ? 'NO_MATCHING_ALLOW' : 'NO_ACCOUNT';
+    return { requestId, effect: denied ? 'deny' : allowed ? 'allow' : 'deny', reasonCode, matchedPolicies: effective.map(rule => rule.id), obligations: obligationsOf(effective), policyVersion: this.policy.version(), expiresAt: effective.find(rule => rule.expiresAt)?.expiresAt };
   }
   async discover(request: { subject: Subject; purpose?: string; context: RequestContext }): Promise<AuthorizedResource[]> {
     const output: AuthorizedResource[] = [];
@@ -340,15 +368,17 @@ export class CapabilityUI {
     const capability = this.capabilities.get(request.capability); if (!capability) throw new Error('CUP_CAPABILITY_NOT_FOUND');
     const errors = validateSchema(request.input, capability.inputSchema); if (errors.length) throw new Error(`CUP_INVALID_INPUT:${errors.join(';')}`);
     const operation = capability.operation;
-    const inputHash = hash(request.input, this.confirmationKey);
     const decision = await this.authorize({ ...request, operation, resource: capability, proposedInput: request.input });
     if (decision.effect !== 'allow') throw new Error(`CUP_NOT_AUTHORIZED:${decision.reasonCode}`);
+    const inputHash = canonicalConfirmationHash({ capability: capability.id, operation, input: request.input, policyVersion: decision.policyVersion }, this.confirmationKey);
     this.prepared.set(decision.requestId, decision); return { request: { ...request, requestId: decision.requestId, operation, resource: capability }, inputHash, preview: { capability: capability.id, input: request.input, sideEffects: capability.sideEffects }, obligations: decision.obligations };
   }
   async execute(request: ExecutionRequest): Promise<Receipt> {
     const capability = this.capabilities.get(request.capability);
-    const inputHash = hash(request.input, this.confirmationKey);
     const actor = receiptActor(request.subject);
+    const inputHash = capability
+      ? canonicalConfirmationHash({ capability: capability.id, operation: capability.operation, input: request.input, policyVersion: this.policy.version() }, this.confirmationKey)
+      : canonicalConfirmationHash({ capability: request.capability, operation: request.operation ?? 'execute', input: request.input, policyVersion: this.policy.version() }, this.confirmationKey);
     if (!capability) return this.recordDenied({ status: 'denied', actor, capability: request.capability, operation: request.operation ?? 'execute', inputHash, decision: await this.authorize({ ...request, operation: request.operation ?? 'execute', resource: { id: request.capability } }) });
     const operation = capability.operation;
     const refs = resourceRefsFor(operation, capability.id, request.input);
@@ -358,7 +388,6 @@ export class CapabilityUI {
         return this.recordDenied({ status: 'denied', actor, capability: capability.id, operation, resourceRefs: refs, inputHash, decision: this.denial(request, 'INVALID_INPUT') });
       }
     }
-    if (!request.subject.authenticated) return this.recordDenied({ status: 'denied', actor, capability: capability.id, operation, resourceRefs: refs, inputHash, decision: this.denial(request, 'NO_ACCOUNT') });
     if (capability.idempotency === 'required' && !request.idempotencyKey) return this.recordDenied({ status: 'denied', actor, capability: capability.id, operation, resourceRefs: refs, inputHash, decision: this.denial(request, 'IDEMPOTENCY_KEY_REQUIRED') });
     if (request.actionToken) { const token = this.actionTokens.get(request.actionToken); if (!token || token.capability !== capability.id || token.subjectId !== request.subject.id || token.audience !== (request.context.channel ?? 'default') || token.policyVersion !== this.policy.version() || token.expiresAt <= this.clock().getTime()) return this.recordDenied({ status: 'denied', actor, capability: capability.id, operation, resourceRefs: refs, inputHash, decision: this.denial(request, 'INVALID_ACTION_TOKEN') }); }
     if (request.idempotencyKey) { const key = `${request.subject.id}:${capability.id}:${request.idempotencyKey}`; const prior = this.idempotency.get(key); if (prior) return prior; }
@@ -370,7 +399,7 @@ export class CapabilityUI {
     if (decision.effect !== 'allow' && delegated && decision.reasonCode === 'NO_MATCHING_ALLOW') decision = { ...decision, effect: 'allow', reasonCode: 'DELEGATED_ALLOW', matchedPolicies: [`delegation:${request.delegation!.id}`] };
     if (decision.effect !== 'allow') return this.recordDenied({ status: 'denied', actor, capability: capability.id, operation, resourceRefs: refs, inputHash, decision });
     const requiresConfirmation = capability.confirmation !== 'none' || decision.obligations.some(obligation => obligation.type === 'preview_changes' || obligation.type === 'human_review' || obligation.type === 'require_confirmation');
-    if (requiresConfirmation && (!request.confirmation || request.confirmation.inputHash !== inputHash || request.confirmation.confirmedBy !== request.subject.id)) {
+    if (requiresConfirmation && (!request.confirmation || !hashesMatch(request.confirmation.inputHash, inputHash) || request.confirmation.confirmedBy !== request.subject.id)) {
       return this.recordDenied({ status: 'denied', actor, capability: capability.id, operation, resourceRefs: refs, inputHash, decision: { ...decision, effect: 'deny', reasonCode: 'CONFIRMATION_REQUIRED' } });
     }
     try {
@@ -396,7 +425,20 @@ export class CapabilityUI {
     if (!original?.reversibleBy) return this.recordDenied({ status: 'denied', actor: receiptActor(request.subject), capability: request.capability ?? 'unknown', operation: 'execute', inputHash: hash({ receiptId }, this.confirmationKey), decision: this.denial({ ...request, capability: request.capability ?? 'unknown', input: { receiptId } }, 'RECEIPT_NOT_REVERSIBLE') });
     return this.execute({ ...request, capability: request.capability ?? original.reversibleBy, input: { receiptId, original: original.resultSummary }, context: { ...request.context, purpose: request.purpose ?? 'reverse' } });
   }
-  confirm(token: string, input: unknown, subjectId: string): Confirmation { const action = this.actionTokens.get(token); if (!action || action.subjectId !== subjectId || action.expiresAt <= this.clock().getTime()) throw new Error('INVALID_ACTION_TOKEN'); return { inputHash: hash(input, this.confirmationKey), confirmedBy: subjectId }; }
+  confirm(token: string, input: unknown, subjectId: string): Confirmation {
+    const action = this.actionTokens.get(token);
+    if (!action || action.subjectId !== subjectId || action.expiresAt <= this.clock().getTime()) throw new Error('INVALID_ACTION_TOKEN');
+    const capability = this.capabilities.get(action.capability);
+    return {
+      inputHash: canonicalConfirmationHash({
+        capability: action.capability,
+        operation: capability?.operation ?? 'execute',
+        input,
+        policyVersion: action.policyVersion,
+      }, this.confirmationKey),
+      confirmedBy: subjectId,
+    };
+  }
   async subscribe(request: { subject: Subject; resource: string; events: string[]; context: RequestContext }): Promise<Subscription> {
     const resource = this.resources.get(request.resource); if (!resource) throw new Error('CUP_RESOURCE_NOT_FOUND');
     const decision = await this.authorize({ subject: request.subject, operation: 'read', resource, context: request.context });
@@ -422,8 +464,9 @@ export class CapabilityUI {
   private async recordDenied(input: Omit<Receipt, 'id' | 'createdAt'>): Promise<Receipt> {
     const receipt = { ...input, status: 'denied' as const, resultSummary: undefined, confirmation: undefined, id: this.nonce(), createdAt: this.clock().toISOString() };
     delete receipt.resultSummary;
-    if (this.shouldWriteDenied({ operation: receipt.operation ?? 'execute', capability: receipt.capability, actor: receipt.actor, reasonCode: receipt.decision.reasonCode })) {
-      await this.receipts.append(receipt);
+    if (this.shouldWriteDenied({ operation: receipt.operation ?? 'execute', capability: receipt.capability, actor: receipt.actor, reasonCode: receipt.decision.reasonCode, subject: undefined })) {
+      try { await this.receipts.append(receipt); }
+      catch { /* A denied-receipt write failure must not replace the authorization error. */ }
     }
     return receipt;
   }
@@ -457,6 +500,23 @@ export function createCapabilityUI(options: CapabilityUIOptions = {}): Capabilit
 export function denyByDefault(options: CapabilityUIOptions = {}): CapabilityUI { return createCapabilityUI(options); }
 export function verifyActionToken(view: AuthorizedView, token: string): AuthorizedCapability | undefined { return view.capabilities.find(capability => capability.actionToken === token); }
 export function canonicalInputHash(input: unknown, confirmationKey?: string): string { return hash(input, confirmationKey); }
+export function canonicalConfirmationHash(binding: { capability: string; operation: Operation; input: unknown; policyVersion?: string }, confirmationKey?: string): string {
+  return hash(binding, confirmationKey);
+}
+export function hashesMatch(left: string, right: string): boolean {
+  const a = Buffer.from(left);
+  const b = Buffer.from(right);
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
+export function operationFromCapabilityId(capabilityId: string): Operation {
+  const suffix = capabilityId.split('.').pop() ?? '';
+  return isKnownOperation(suffix) ? suffix : 'read';
+}
+function applyDeleteDefaults(resource: Resource | Capability): Resource | Capability {
+  if (resource.type !== 'capability' || !('handler' in resource) || resource.operation !== 'delete') return resource;
+  return { ...resource, risk: resource.risk ?? 'high', confirmation: resource.confirmation ?? 'explicit' };
+}
 export function subject(id: string, attributes: Record<string, unknown> = {}, authenticated = true): Subject { return { id, type: id.startsWith('agent:') ? 'agent' : 'user', authenticated, attributes }; }
 export function resource(id: string, version = '1.0'): ResourceRef { return { id, version }; }
 export function capability(id: string): ResourceRef { return { id }; }

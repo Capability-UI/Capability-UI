@@ -273,4 +273,4 @@ Write custom conditions when the rule needs domain data. Keep them deterministic
 
 ## Inspect the reason
 
-Use `reasonCode` to give a useful client response without exposing internal policy details. Common values include `ALLOWED`, `NO_MATCHING_ALLOW`, `EXPLICIT_DENY`, `SUBJECT_NOT_AUTHENTICATED`, `CONFIRMATION_REQUIRED`, `INVALID_INPUT`, and `PREPARED_DECISION_STALE`.
+Use `reasonCode` to give a useful client response without exposing internal policy details. Common values include `ALLOWED`, `NO_MATCHING_ALLOW` (authenticated subject, no matching allow), `NO_ACCOUNT` (unauthenticated subject, no matching allow), `EXPLICIT_DENY`, `CONFIRMATION_REQUIRED`, `INVALID_INPUT`, and `PREPARED_DECISION_STALE`. Guest-matching public allows still succeed.

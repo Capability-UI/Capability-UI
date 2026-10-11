@@ -84,7 +84,7 @@ New receipts always set `operation`. Older stored rows may omit it; read `receip
 
 Receipts never store the raw input payload. `resultSummary` is produced by `summarizeResult` (default: no summary for `delete`, otherwise ids and counts only). Pass `confirmationKey` so `inputHash` is HMAC-SHA256. Plain SHA-256 is only used when no key is configured and is weak for short inputs.
 
-On a hard delete, call `scrubReceiptsForResource(receipts, resourceId)` or `MemoryReceiptSink.scrubForResource(id)` to keep id, operation, actor, timestamps, and status while dropping summaries and confirmation material.
+On a hard delete, call `cup.scrubForResource(resourceId)` or `scrubReceiptsForResource(receipts, resourceId)` to keep id, operation, actor, timestamps, and status while dropping summaries and confirmation material. That path also scrubs cached idempotent receipts.
 
 ## Durable sink
 
@@ -118,4 +118,4 @@ Use append-only permissions, server timestamps, retention rules, and access cont
 
 ## Denial receipts
 
-CUP records denials for missing confirmation, invalid input, stale policy, invalid delegation, explicit policy denial, and unauthenticated `read`/`execute` (`NO_ACCOUNT`). Denied receipts omit the payload and result. Set `writeDeniedReceipts: false` (or a sampling function) if the host must rate-limit guest denials. A client can display the reason code. An operator can use the request ID and policy version to investigate the decision.
+CUP records denials for missing confirmation, invalid input, stale policy, invalid delegation, explicit policy denial, and unauthenticated `read`/`execute` with no matching allow (`NO_ACCOUNT`). Authenticated subjects with no matching allow still see `NO_MATCHING_ALLOW`. Public guest allows are unchanged. Denied receipts omit the payload and result, and record unauthenticated actors as `anonymous`. Set `writeDeniedReceipts: false` (or a sampling function) if the host must rate-limit guest denials. A failure to persist a denied receipt never replaces `CUP_NOT_AUTHORIZED`.
