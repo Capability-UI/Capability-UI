@@ -65,7 +65,8 @@ A receipt contains:
   status: 'succeeded' | 'failed' | 'denied',
   actor: { id: 'user:maya', type: 'user' },
   capability: 'mail.send',
-  inputHash: 'sha256...',
+  operation: 'execute',
+  inputHash: 'hmac-sha256...',
   decision: {
     requestId: 'request-id',
     effect: 'allow',
@@ -79,7 +80,11 @@ A receipt contains:
 }
 ```
 
-The `inputHash` lets you connect confirmation and execution without storing the entire request in the receipt. Decide carefully whether `resultSummary` can contain personal or secret data.
+New receipts always set `operation`. Older stored rows may omit it; read `receipt.operation` first and fall back to inferring from the capability suffix.
+
+Receipts never store the raw input payload. `resultSummary` is produced by `summarizeResult` (default: no summary for `delete`, otherwise ids and counts only). Pass `confirmationKey` so `inputHash` is HMAC-SHA256. Plain SHA-256 is only used when no key is configured and is weak for short inputs.
+
+On a hard delete, call `scrubReceiptsForResource(receipts, resourceId)` or `MemoryReceiptSink.scrubForResource(id)` to keep id, operation, actor, timestamps, and status while dropping summaries and confirmation material.
 
 ## Durable sink
 
@@ -113,4 +118,4 @@ Use append-only permissions, server timestamps, retention rules, and access cont
 
 ## Denial receipts
 
-CUP records denials for missing confirmation, invalid input, stale policy, invalid delegation, and explicit policy denial. A client can display the reason code. An operator can use the request ID and policy version to investigate the decision.
+CUP records denials for missing confirmation, invalid input, stale policy, invalid delegation, explicit policy denial, and unauthenticated `read`/`execute` (`NO_ACCOUNT`). Denied receipts omit the payload and result. Set `writeDeniedReceipts: false` (or a sampling function) if the host must rate-limit guest denials. A client can display the reason code. An operator can use the request ID and policy version to investigate the decision.

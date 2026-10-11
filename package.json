@@ -1,6 +1,6 @@
 {
   "name": "@capability-ui/core",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Agent-neutral capability, policy, projection, and guarded execution core for generative interfaces.",
   "type": "module",
   "main": "dist/src/index.js",
@@ -18,6 +18,7 @@
     "dist/src",
     "sql",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "scripts": {
@@ -50,7 +51,7 @@
   ],
   "license": "MIT",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.5"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

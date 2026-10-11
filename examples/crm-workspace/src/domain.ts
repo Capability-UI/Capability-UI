@@ -144,8 +144,8 @@ export async function createCrmWorkspace(options: { databaseFile?: string } = {}
       return { delivered: true, to: value.to };
     },
   }));
-  allowExecute(cup, { id: 'maya-note', principal: { id: maya.id }, resourceId: 'crm.addNote', priority: 20 });
-  allowExecute(cup, { id: 'bob-note', principal: { id: bob.id }, resourceId: 'crm.addNote', priority: 10 });
+  allowExecute(cup, { id: 'maya-note', principal: { id: maya.id }, resourceId: 'crm.addNote', operation: 'create', priority: 20 });
+  allowExecute(cup, { id: 'bob-note', principal: { id: bob.id }, resourceId: 'crm.addNote', operation: 'create', priority: 10 });
   allowExecute(cup, { id: 'maya-mail', principal: { id: maya.id }, resourceId: 'mail.send', priority: 20 });
 
   const catalog = {

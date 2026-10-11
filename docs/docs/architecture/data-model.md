@@ -81,7 +81,7 @@ create table cup_resources (
 
 create table cup_capabilities (
   resource_id text primary key references cup_resources(id) on delete cascade,
-  operation text not null check (operation in ('discover', 'inspect', 'read', 'create', 'update', 'delete', 'execute', 'share', 'delegate')),
+  operation text not null check (operation in ('discover', 'inspect', 'read', 'create', 'update', 'delete', 'move', 'execute', 'share', 'delegate')),
   input_schema jsonb not null,
   output_schema jsonb not null,
   side_effects jsonb not null default '[]'::jsonb,
@@ -143,7 +143,9 @@ create table cup_receipts (
   actor_id text not null references cup_subjects(id),
   actor_type text not null,
   capability_id text not null,
-  input_hash text not null,
+  operation text,
+  resource_refs jsonb,
+  input_hash text,
   decision jsonb not null,
   result_summary jsonb,
   created_at timestamptz not null

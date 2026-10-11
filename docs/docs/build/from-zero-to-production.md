@@ -68,7 +68,7 @@ cup.register(workspace);
 
 for (const operation of [
   'discover', 'inspect', 'read', 'create', 'update',
-  'delete', 'execute', 'share', 'delegate',
+  'delete', 'move', 'execute', 'share', 'delegate',
 ] as const) {
   cup.policy.allow({
     id: `admin-${operation}-registry`,
@@ -87,7 +87,7 @@ function registerOwnerCapability(
   cup.policy.allow({
     id: `admin-execute-${capability.id}`,
     principal: { id: admin.id },
-    operation: 'execute',
+    operation: capability.operation,
     resource: { id: capability.id },
     priority: 100,
   });
@@ -331,7 +331,7 @@ Admin's assistant connects as `user:admin`. It can see every owner tool because 
   "id": 1,
   "result": {
     "protocolVersion": "2025-06-18",
-    "serverInfo": { "name": "acme-workspace", "version": "0.2.0" },
+    "serverInfo": { "name": "acme-workspace", "version": "0.3.0" },
     "capabilities": { "resources": { "subscribe": true }, "tools": {}, "prompts": {} }
   }
 }

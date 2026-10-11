@@ -83,7 +83,7 @@ CUP evaluates the assistant as the actor when it makes a downstream call. Passin
 
 ## Operations are intentionally separate
 
-`discover` means the subject may know that a resource exists. `inspect` means the subject may see its schema or metadata. `read` means the subject may receive data. `execute` means the subject may invoke a capability. `delegate` means the subject may issue a bounded grant. Keeping these operations separate lets an application expose a useful catalog without exposing records or actions.
+`discover` means the subject may know that a resource exists. `inspect` means the subject may see its schema or metadata. `read` means the subject may receive data. `update` changes fields within one resource. `delete` removes a resource and defaults to high risk with explicit confirmation. `move` relocates a resource (`{ id, toType }`) and touches source and destination. `execute` means the subject may invoke a generic capability. `delegate` means the subject may issue a bounded grant. Keeping these operations separate lets an application expose a useful catalog without exposing records or actions.
 
 ## Views are projections, not enforcement
 

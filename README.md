@@ -6,14 +6,14 @@ CUP does not create, host, schedule, or manage agents. It can register an existi
 
 ## Implementation status
 
-Version `0.2.0` is a dependency-free protocol runtime with an in-memory reference engine and SQLite/PostgreSQL persistence primitives. SQLite is the recommended embedded backend: `openNodeSqlite()` (over Node's built-in `node:sqlite`, no extra dependency), `CUP_SQLITE_SCHEMA`, and `SqliteCupPersistence` implement the `CupPersistence` interface; `PostgresPersistence` remains available for server deployments. It implements the CUP semantic core: resource and capability registration, deterministic policy evaluation, authorized views, field redaction, guarded execution, confirmation hashes, subject-bound action tokens, delegation, subscriptions, MCP JSON-RPC mapping, adapter contracts, and receipts.
+Version `0.3.0` is a dependency-free protocol runtime with an in-memory reference engine and SQLite/PostgreSQL persistence primitives. It requires Node.js 22.5 or newer. SQLite is the recommended embedded backend: `openNodeSqlite()` (over Node's built-in `node:sqlite`, no extra dependency), `CUP_SQLITE_SCHEMA`, and `SqliteCupPersistence` implement the `CupPersistence` interface; `PostgresPersistence` remains available for server deployments. It implements the CUP semantic core: resource and capability registration, deterministic policy evaluation, authorized views, field redaction, guarded execution, keyed confirmation hashes, subject-bound action tokens, delegation, subscriptions, MCP JSON-RPC mapping, adapter contracts, and receipts.
 
 CUP does not currently persist resources or policies to SQL by itself. The host application owns database schemas, migrations, policy loading, transaction boundaries, durable receipt storage, authentication, and provider handlers. The Docusaurus site includes a PostgreSQL schema and repository design in [CUP data model](docs/docs/architecture/data-model.md).
 
 ## Implemented features
 
 - Typed resource and capability contracts
-- Separate `discover`, `inspect`, `read`, `execute`, `share`, and `delegate` operations
+- Separate `discover`, `inspect`, `read`, `create`, `update`, `delete`, `move`, `execute`, `share`, and `delegate` operations
 - Deny-by-default policy evaluation (`denyByDefault()` alias makes intent explicit)
 - Explicit deny precedence at equal priority
 - Subject matching by ID, role, type, or wildcard
@@ -39,7 +39,7 @@ Runnable hosts live in [`examples/`](examples/README.md): Meridian (CRM), Clearl
 
 ## Install
 
-Until public npm is available, install `0.2.0` from GitHub Packages with a GitHub PAT that has `read:packages` (authorize SSO for the Capability-UI org if required). Do not commit the token.
+Until public npm is available, install `0.3.0` from GitHub Packages with a GitHub PAT that has `read:packages` (authorize SSO for the Capability-UI org if required). Do not commit the token.
 
 ```ini
 # .npmrc
@@ -48,7 +48,7 @@ Until public npm is available, install `0.2.0` from GitHub Packages with a GitHu
 ```
 
 ```bash
-npm i @capability-ui/core@0.2.0
+npm i @capability-ui/core@0.3.0
 ```
 
 Maintainer publish steps: [docs/developer/publishing.md](docs/developer/publishing.md).
@@ -193,4 +193,6 @@ npm run check  # TypeScript type check without emitting files
 npm run build  # emit dist/ and declaration files
 ```
 
-The package is an early reference implementation. Authentication and identity proofing remain host responsibilities. Persistent policy and receipt stores, production transport deployment, and framework-specific renderers or agent-runtime adapters can be supplied through the exported interfaces.
+Requirements: Node.js 22.5 or newer (see `.nvmrc`). Authentication and identity proofing remain host responsibilities. Persistent policy and receipt stores, production transport deployment, and framework-specific renderers or agent-runtime adapters can be supplied through the exported interfaces.
+
+Set `confirmationKey` on `CapabilityUI` so confirmation hashes are HMAC-SHA256. Plain SHA-256 is only a fallback when no key is configured and is weak for short inputs. See [CHANGELOG](CHANGELOG.md) for 0.3.0 host migration notes.

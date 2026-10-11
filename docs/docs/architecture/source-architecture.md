@@ -28,7 +28,7 @@ examples/
 └── agent-studio/     PydanticAI copilot that generates warehouse tables and forms
 ```
 
-## Feature summary (v0.2.0)
+## Feature summary (v0.3.0)
 
 | Feature | Location |
 |---|---|

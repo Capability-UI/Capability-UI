@@ -166,9 +166,9 @@ export async function createSupportDesk(options: { databaseFile?: string } = {})
       return { ok: true };
     },
   }));
-  allowExecute(cup, { id: 'aisha-comment', principal: { id: aisha.id }, resourceId: 'tickets.comment', priority: 20 });
-  allowExecute(cup, { id: 'rio-comment', principal: { id: rio.id }, resourceId: 'tickets.comment', priority: 10 });
-  allowExecute(cup, { id: 'aisha-assign', principal: { id: aisha.id }, resourceId: 'tickets.assign', priority: 20 });
+  allowExecute(cup, { id: 'aisha-comment', principal: { id: aisha.id }, resourceId: 'tickets.comment', operation: 'update', priority: 20 });
+  allowExecute(cup, { id: 'rio-comment', principal: { id: rio.id }, resourceId: 'tickets.comment', operation: 'update', priority: 10 });
+  allowExecute(cup, { id: 'aisha-assign', principal: { id: aisha.id }, resourceId: 'tickets.assign', operation: 'update', priority: 20 });
   allowExecute(cup, { id: 'aisha-escalate', principal: { id: aisha.id }, resourceId: 'tickets.escalate', priority: 20 });
 
   const catalog = {

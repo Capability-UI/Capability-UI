@@ -8,10 +8,15 @@ import {
   type Receipt,
   defineCapability,
   capabilityToTool,
+  canonicalInputHash,
   createMCPServer,
   MemoryActionTokenService,
+  MemoryReceiptSink,
   PostgresPersistence,
   CUP_POSTGRES_SCHEMA,
+  OPERATIONS,
+  scrubReceiptsForResource,
+  stripReceiptContent,
 } from '../src/index.js';
 
 const john: Subject = {
@@ -107,7 +112,9 @@ test('execute invokes an allowed capability with a matching confirmation', async
     confirmation: { inputHash: prepared.inputHash, confirmedBy: john.id }, context: {}
   });
   assert.equal(receipt.status, 'succeeded');
+  assert.equal(receipt.operation, 'execute');
   assert.deepEqual(seen, [input]);
+  assert.equal('input' in receipt, false);
 });
 
 test('policy scope must match the request scope', async () => {
@@ -141,7 +148,7 @@ test('rejects unauthenticated protected requests', async () => {
   const cup = new CapabilityUI(); cup.register(notes());
   const anonymous = { ...john, authenticated: false };
   const decision = await cup.authorize({ subject: anonymous, operation: 'read', resource: { id: 'notes.john' }, context: {} });
-  assert.equal(decision.reasonCode, 'SUBJECT_NOT_AUTHENTICATED');
+  assert.equal(decision.reasonCode, 'NO_ACCOUNT');
 });
 
 test('canonicalizes nested input keys for confirmation', async () => {
@@ -300,10 +307,211 @@ test('executes a separately authorized reversal capability', async () => {
   let reversed = false;
   cup.register({ id: 'task.create', type: 'capability', version: '1', sensitivity: 'personal', schema: { type: 'object' }, operation: 'create', inputSchema: { type: 'object' }, outputSchema: { type: 'object' }, sideEffects: ['Creates a task'], risk: 'medium', confirmation: 'none', idempotency: 'required', reversibility: 'reversible', reverseCapability: 'task.delete', handler: async () => ({ taskId: 't1' }) });
   cup.register({ id: 'task.delete', type: 'capability', version: '1', sensitivity: 'personal', schema: { type: 'object' }, operation: 'delete', inputSchema: { type: 'object' }, outputSchema: { type: 'object' }, sideEffects: ['Deletes a task'], risk: 'high', confirmation: 'none', idempotency: 'required', reversibility: 'irreversible', handler: async () => { reversed = true; return { deleted: true }; } });
-  cup.policy.allow({ id: 'create', principal: { id: john.id }, operation: 'execute', resource: { id: 'task.create' }, priority: 10 });
-  cup.policy.allow({ id: 'delete', principal: { id: john.id }, operation: 'execute', resource: { id: 'task.delete' }, priority: 10 });
+  cup.policy.allow({ id: 'create', principal: { id: john.id }, operation: 'create', resource: { id: 'task.create' }, priority: 10 });
+  cup.policy.allow({ id: 'delete', principal: { id: john.id }, operation: 'delete', resource: { id: 'task.delete' }, priority: 10 });
   const original = await cup.execute({ subject: john, capability: 'task.create', input: {}, idempotencyKey: 'create-1', context: {} });
   const undone = await cup.reverse(original.id, { subject: john, idempotencyKey: 'delete-1', context: {} });
   assert.equal(undone.status, 'succeeded');
   assert.equal(reversed, true);
 });
+
+test('read receipts set operation and omit the query payload', async () => {
+  const cup = new CapabilityUI();
+  cup.register({ ...notes(), read: async () => [{ title: 'Brief' }] });
+  cup.policy.allow({ id: 'john-read', principal: { id: john.id }, operation: 'read', resource: { id: 'notes.john' }, priority: 10 });
+  await cup.read({ subject: john, resource: 'notes.john', query: { q: 'secret-search' }, context: {} });
+  const receipt = cup.receipts.all()[0];
+  assert.equal(receipt?.operation, 'read');
+  assert.equal(receipt?.status, 'succeeded');
+  assert.equal(JSON.stringify(receipt).includes('secret-search'), false);
+});
+
+test('denied read writes a receipt then throws', async () => {
+  const cup = new CapabilityUI();
+  cup.register({ ...notes(), read: async () => [{ title: 'Brief' }] });
+  await assert.rejects(() => cup.read({ subject: other, resource: 'notes.john', query: { q: 'hidden' }, context: {} }), /CUP_NOT_AUTHORIZED:NO_MATCHING_ALLOW/);
+  const receipt = cup.receipts.all()[0];
+  assert.equal(receipt?.status, 'denied');
+  assert.equal(receipt?.operation, 'read');
+  assert.equal(receipt?.capability, 'notes.john');
+  assert.equal(receipt?.actor.id, other.id);
+  assert.equal(receipt?.decision.reasonCode, 'NO_MATCHING_ALLOW');
+  assert.equal(receipt?.resultSummary, undefined);
+  assert.equal(receipt?.inputHash, undefined);
+  assert.equal(JSON.stringify(receipt).includes('hidden'), false);
+});
+
+test('unauthenticated execute records a denied NO_ACCOUNT receipt', async () => {
+  const cup = new CapabilityUI();
+  cup.register(sendMail(async () => ({ sent: true })));
+  const guest = { ...john, authenticated: false };
+  const receipt = await cup.execute({ subject: guest, capability: 'mail.send', input: { body: 'secret-body' }, context: {} });
+  assert.equal(receipt.status, 'denied');
+  assert.equal(receipt.operation, 'execute');
+  assert.equal(receipt.decision.reasonCode, 'NO_ACCOUNT');
+  assert.equal(receipt.resultSummary, undefined);
+  assert.equal(JSON.stringify(receipt).includes('secret-body'), false);
+});
+
+test('denied receipts can be disabled on the server', async () => {
+  const cup = new CapabilityUI({ writeDeniedReceipts: false });
+  cup.register({ ...notes(), read: async () => [] });
+  await assert.rejects(() => cup.read({ subject: other, resource: 'notes.john', context: {} }), /CUP_NOT_AUTHORIZED/);
+  assert.equal(cup.receipts.all().length, 0);
+});
+
+test('denied-receipt writer can sample guest denials', async () => {
+  let seen = 0;
+  const cup = new CapabilityUI({
+    writeDeniedReceipts: context => {
+      seen += 1;
+      return context.actor.id === john.id;
+    },
+  });
+  cup.register(sendMail(async () => ({ sent: true })));
+  await cup.execute({ subject: other, capability: 'mail.send', input: {}, context: {} });
+  await cup.execute({ subject: john, capability: 'mail.send', input: {}, context: {} });
+  assert.equal(seen, 2);
+  assert.equal(cup.receipts.all().length, 1);
+  assert.equal(cup.receipts.all()[0]?.actor.id, john.id);
+});
+
+test('update, delete, and move are first-class operations', async () => {
+  const cup = new CapabilityUI();
+  const deleted: string[] = [];
+  cup.register(defineCapability({
+    id: 'notes.update', version: '1.0', sensitivity: 'personal', schema: { type: 'object' },
+    operation: 'update', inputSchema: { type: 'object' }, outputSchema: { type: 'object' },
+    sideEffects: ['Updates a note'], idempotency: 'none', reversibility: 'reversible',
+    handler: async input => ({ id: (input as { id: string }).id, updated: true, body: 'secret' }),
+  }));
+  cup.register(defineCapability({
+    id: 'notes.delete', version: '1.0', sensitivity: 'personal', schema: { type: 'object' },
+    operation: 'delete', inputSchema: { type: 'object' }, outputSchema: { type: 'object' },
+    sideEffects: ['Deletes a note'], idempotency: 'none', reversibility: 'irreversible',
+    handler: async input => { deleted.push((input as { id: string }).id); return { id: (input as { id: string }).id, body: 'gone' }; },
+  }));
+  cup.register(defineCapability({
+    id: 'notes.move', version: '1.0', sensitivity: 'personal', schema: { type: 'object' },
+    operation: 'move',
+    inputSchema: { type: 'object', required: ['id', 'toType'], properties: { id: { type: 'string' }, toType: { type: 'string' } } },
+    outputSchema: { type: 'object' },
+    sideEffects: ['Moves a note'], risk: 'medium', confirmation: 'none', idempotency: 'none', reversibility: 'irreversible',
+    handler: async input => ({ id: (input as { id: string }).id, toType: (input as { toType: string }).toType }),
+  }));
+  cup.policy.allow({ id: 'u', principal: { id: john.id }, operation: 'update', resource: { id: 'notes.update' }, priority: 10 });
+  cup.policy.allow({ id: 'd', principal: { id: john.id }, operation: 'delete', resource: { id: 'notes.delete' }, priority: 10 });
+  cup.policy.allow({ id: 'm', principal: { id: john.id }, operation: 'move', resource: { id: 'notes.move' }, priority: 10 });
+  cup.policy.allow({ id: 'du', principal: { id: john.id }, operation: 'discover', resource: { id: 'notes.update' }, priority: 10 });
+  cup.policy.allow({ id: 'dd', principal: { id: john.id }, operation: 'discover', resource: { id: 'notes.delete' }, priority: 10 });
+  cup.policy.allow({ id: 'dm', principal: { id: john.id }, operation: 'discover', resource: { id: 'notes.move' }, priority: 10 });
+
+  const listed = await cup.discover({ subject: john, context: {} });
+  assert.deepEqual(listed.map(item => item.ref.id).sort(), ['notes.delete', 'notes.move', 'notes.update']);
+
+  const view = await cup.project({ subject: john, context: {} });
+  assert.deepEqual(view.capabilities.map(item => item.operation).sort(), ['delete', 'move', 'update']);
+  const deleteCap = view.capabilities.find(item => item.id === 'notes.delete');
+  assert.equal(deleteCap?.risk, 'high');
+  assert.equal(deleteCap?.confirmation, 'explicit');
+
+  const updated = await cup.execute({ subject: john, capability: 'notes.update', input: { id: 'n1', body: 'secret' }, context: {} });
+  assert.equal(updated.status, 'succeeded');
+  assert.equal(updated.operation, 'update');
+  assert.deepEqual(updated.resourceRefs, [{ id: 'n1' }]);
+  assert.deepEqual(updated.resultSummary, { id: 'n1' });
+  assert.equal(JSON.stringify(updated).includes('secret'), false);
+
+  const preparedDelete = await cup.prepare({ subject: john, capability: 'notes.delete', input: { id: 'n1' }, context: {} });
+  const deniedDelete = await cup.execute({ subject: john, capability: 'notes.delete', input: { id: 'n1' }, context: {} });
+  assert.equal(deniedDelete.status, 'denied');
+  assert.equal(deniedDelete.decision.reasonCode, 'CONFIRMATION_REQUIRED');
+  const deletedReceipt = await cup.execute({
+    subject: john, capability: 'notes.delete', input: { id: 'n1' },
+    confirmation: { inputHash: preparedDelete.inputHash, confirmedBy: john.id }, context: {},
+  });
+  assert.equal(deletedReceipt.status, 'succeeded');
+  assert.equal(deletedReceipt.operation, 'delete');
+  assert.equal(deletedReceipt.resultSummary, undefined);
+  assert.deepEqual(deleted, ['n1']);
+
+  const moved = await cup.execute({ subject: john, capability: 'notes.move', input: { id: 'n1', toType: 'archive.notes' }, context: {} });
+  assert.equal(moved.status, 'succeeded');
+  assert.equal(moved.operation, 'move');
+  assert.deepEqual(moved.resourceRefs, [{ id: 'n1' }, { id: 'archive.notes' }]);
+
+  const server = createMCPServer({ name: 'test', cup, authenticate: () => john });
+  const initialized = await server.handle({ jsonrpc: '2.0', id: 1, method: 'initialize' });
+  assert.deepEqual((initialized.result as { _cup: { operations: string[] } })._cup.operations, [...OPERATIONS]);
+  const tools = await server.handle({ jsonrpc: '2.0', id: 2, method: 'tools/list' });
+  const names = (tools.result as { tools: Array<{ name: string; _cup: { operation: string } }> }).tools;
+  assert.equal(names.find(item => item.name === 'notes.move')?._cup.operation, 'move');
+});
+
+test('move without id and toType is denied', async () => {
+  const cup = new CapabilityUI();
+  cup.register(defineCapability({
+    id: 'notes.move', version: '1.0', sensitivity: 'personal', schema: { type: 'object' },
+    operation: 'move', inputSchema: { type: 'object' }, outputSchema: { type: 'object' },
+    sideEffects: [], risk: 'low', confirmation: 'none', idempotency: 'none', reversibility: 'irreversible',
+    handler: async () => ({ ok: true }),
+  }));
+  cup.policy.allow({ id: 'm', principal: { id: john.id }, operation: 'move', resource: { id: 'notes.move' }, priority: 10 });
+  const receipt = await cup.execute({ subject: john, capability: 'notes.move', input: { id: 'n1' }, context: {} });
+  assert.equal(receipt.status, 'denied');
+  assert.equal(receipt.decision.reasonCode, 'INVALID_INPUT');
+});
+
+test('confirmation hashes are HMAC when a host key is configured', async () => {
+  const cup = new CapabilityUI({ confirmationKey: 'host-secret' });
+  cup.register({ ...sendMail(async () => ({ sent: true })), confirmation: 'explicit' });
+  cup.policy.allow({ id: 'mail', principal: { id: john.id }, operation: 'execute', resource: { id: 'mail.send' }, priority: 10 });
+  const input = { to: ['a@example.com'], body: 'Hi' };
+  const prepared = await cup.prepare({ subject: john, capability: 'mail.send', input, context: {} });
+  assert.equal(prepared.inputHash, canonicalInputHash(input, 'host-secret'));
+  assert.notEqual(prepared.inputHash, canonicalInputHash(input));
+  const denied = await cup.execute({
+    subject: john, capability: 'mail.send', input, idempotencyKey: 'hmac-1',
+    confirmation: { inputHash: canonicalInputHash(input), confirmedBy: john.id }, context: {},
+  });
+  assert.equal(denied.status, 'denied');
+  const allowed = await cup.execute({
+    subject: john, capability: 'mail.send', input, idempotencyKey: 'hmac-2',
+    confirmation: { inputHash: prepared.inputHash, confirmedBy: john.id }, context: {},
+  });
+  assert.equal(allowed.status, 'succeeded');
+});
+
+test('stripReceiptContent and scrubReceiptsForResource drop summaries for a hard delete', () => {
+  const receipt: Receipt = {
+    id: 'r1', status: 'succeeded', actor: { id: john.id, type: 'user' },
+    capability: 'notes.delete', operation: 'delete', resourceRefs: [{ id: 'n1' }],
+    inputHash: 'abc', decision: { requestId: 'req', effect: 'allow', reasonCode: 'ALLOWED', matchedPolicies: [], obligations: [], policyVersion: 'policy-1' },
+    confirmation: { inputHash: 'abc', confirmedBy: john.id },
+    resultSummary: { body: 'private note' }, createdAt: '2030-01-01T00:00:00.000Z',
+  };
+  const otherReceipt: Receipt = { ...receipt, id: 'r2', capability: 'mail.send', operation: 'execute', resourceRefs: [{ id: 'mail.send' }], resultSummary: { sent: true } };
+  const stripped = stripReceiptContent(receipt);
+  assert.equal(stripped.resultSummary, undefined);
+  assert.equal(stripped.confirmation, undefined);
+  assert.equal(stripped.inputHash, undefined);
+  assert.equal(stripped.id, 'r1');
+  assert.equal(stripped.operation, 'delete');
+  const scrubbed = scrubReceiptsForResource([receipt, otherReceipt], 'n1');
+  assert.equal(scrubbed[0]?.resultSummary, undefined);
+  assert.equal(scrubbed[1]?.resultSummary, otherReceipt.resultSummary);
+});
+
+test('MemoryReceiptSink.scrubForResource mutates matching receipts', async () => {
+  const sink = new MemoryReceiptSink();
+  await sink.append({
+    id: 'r1', status: 'succeeded', actor: { id: john.id, type: 'user' },
+    capability: 'health.record', operation: 'read', resourceRefs: [{ id: 'health.record' }],
+    inputHash: 'h', decision: { requestId: 'req', effect: 'allow', reasonCode: 'ALLOWED', matchedPolicies: [], obligations: [], policyVersion: 'policy-1' },
+    resultSummary: { notes: 'sensitive' }, createdAt: '2030-01-01T00:00:00.000Z',
+  });
+  sink.scrubForResource('health.record');
+  assert.equal(sink.all()[0]?.resultSummary, undefined);
+  assert.equal(sink.all()[0]?.status, 'succeeded');
+});
+

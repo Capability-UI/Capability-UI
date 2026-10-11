@@ -21,12 +21,12 @@ Until public npm is available, install from GitHub Packages (`@capability-ui` sc
 ```
 
 ```bash
-npm i @capability-ui/core@0.2.0
+npm i @capability-ui/core@0.3.0
 ```
 
 ## Requirements
 
-- Node.js 20 or newer
+- Node.js 22.5 or newer
 - TypeScript 5.6 or newer for TypeScript projects
 - A host authentication system
 - A resource adapter for data-backed resources
@@ -42,7 +42,7 @@ For a project that compiles ESM TypeScript:
     "test": "node --test"
   },
   "dependencies": {
-    "@capability-ui/core": "^0.2.0"
+    "@capability-ui/core": "^0.3.0"
   }
 }
 ```

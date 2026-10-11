@@ -201,11 +201,11 @@ export async function createAgentStudio(options: { databaseFile?: string } = {})
     },
   }));
   for (const principal of [nia, agent]) {
-    allowExecute(cup, { id: `${principal.id}-adjust`, principal: { id: principal.id }, resourceId: 'inventory.adjust', priority: 20 });
-    allowExecute(cup, { id: `${principal.id}-draft`, principal: { id: principal.id }, resourceId: 'inventory.draftPurchaseOrder', priority: 20 });
+    allowExecute(cup, { id: `${principal.id}-adjust`, principal: { id: principal.id }, resourceId: 'inventory.adjust', operation: 'update', priority: 20 });
+    allowExecute(cup, { id: `${principal.id}-draft`, principal: { id: principal.id }, resourceId: 'inventory.draftPurchaseOrder', operation: 'create', priority: 20 });
     allowExecute(cup, { id: `${principal.id}-submit`, principal: { id: principal.id }, resourceId: 'inventory.submitPurchaseOrder', priority: 20 });
   }
-  allowExecute(cup, { id: 'ellis-draft', principal: { id: ellis.id }, resourceId: 'inventory.draftPurchaseOrder', priority: 10 });
+  allowExecute(cup, { id: 'ellis-draft', principal: { id: ellis.id }, resourceId: 'inventory.draftPurchaseOrder', operation: 'create', priority: 10 });
 
   const catalog = {
     summary: 'Products are bin-level stock. Purchase orders and stock moves reference a SKU. Unit cost is stripped for buyers on inventory.products. Submit PO is an action on purchase_orders, ops lead and copilot only.',

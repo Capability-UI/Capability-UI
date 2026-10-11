@@ -97,7 +97,9 @@ create table if not exists cup_receipts (
   actor_id text not null references cup_subjects(id),
   actor_type text not null,
   capability_id text not null,
-  input_hash text not null,
+  operation text,
+  resource_refs jsonb,
+  input_hash text,
   decision jsonb not null,
   result_summary jsonb,
   created_at timestamptz not null
@@ -133,14 +135,14 @@ export class PostgresPersistence implements CupPersistence {
 
   async appendReceipt(receipt: Receipt): Promise<void> {
     await this.db.query(
-      'insert into cup_receipts (id, request_id, status, actor_id, actor_type, capability_id, input_hash, decision, result_summary, created_at) values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb,$10)',
-      [receipt.id, receipt.decision.requestId, receipt.status, receipt.actor.id, receipt.actor.type, receipt.capability, receipt.inputHash, JSON.stringify(receipt.decision), JSON.stringify(receipt.resultSummary ?? null), receipt.createdAt],
+      'insert into cup_receipts (id, request_id, status, actor_id, actor_type, capability_id, operation, resource_refs, input_hash, decision, result_summary, created_at) values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10::jsonb,$11::jsonb,$12)',
+      [receipt.id, receipt.decision.requestId, receipt.status, receipt.actor.id, receipt.actor.type, receipt.capability, receipt.operation ?? null, JSON.stringify(receipt.resourceRefs ?? null), receipt.inputHash ?? null, JSON.stringify(receipt.decision), JSON.stringify(receipt.resultSummary ?? null), receipt.createdAt],
     );
   }
 
   async receipts(query: { actorId?: string; capability?: string; status?: Receipt['status'] } = {}): Promise<Receipt[]> {
-    const result = await this.db.query<any>('select id, request_id, status, actor_id, actor_type, capability_id, input_hash, decision, result_summary, created_at from cup_receipts where ($1::text is null or actor_id = $1) and ($2::text is null or capability_id = $2) and ($3::text is null or status = $3) order by created_at desc', [query.actorId ?? null, query.capability ?? null, query.status ?? null]);
-    return result.rows.map(row => ({ id: row.id, status: row.status, actor: { id: row.actor_id, type: row.actor_type }, capability: row.capability_id, inputHash: row.input_hash, decision: row.decision, resultSummary: row.result_summary ?? undefined, createdAt: new Date(row.created_at).toISOString() }));
+    const result = await this.db.query<any>('select id, request_id, status, actor_id, actor_type, capability_id, operation, resource_refs, input_hash, decision, result_summary, created_at from cup_receipts where ($1::text is null or actor_id = $1) and ($2::text is null or capability_id = $2) and ($3::text is null or status = $3) order by created_at desc', [query.actorId ?? null, query.capability ?? null, query.status ?? null]);
+    return result.rows.map(row => ({ id: row.id, status: row.status, actor: { id: row.actor_id, type: row.actor_type }, capability: row.capability_id, operation: row.operation ?? undefined, resourceRefs: row.resource_refs ?? undefined, inputHash: row.input_hash ?? undefined, decision: row.decision, resultSummary: row.result_summary ?? undefined, createdAt: new Date(row.created_at).toISOString() }));
   }
 
   async appendDelegation(grant: DelegationGrant): Promise<void> { await this.db.query('insert into cup_delegation_grants (id, from_subject_id, to_subject_id, capability_id, operations, scope, purpose, expires_at) values ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7,$8)', [grant.id, grant.from.id, grant.to.id, grant.capability, JSON.stringify(grant.operations), JSON.stringify(grant.scope ?? null), grant.purpose ?? null, grant.expiresAt]); }
@@ -237,7 +239,9 @@ create table if not exists cup_receipts (
   actor_id text not null,
   actor_type text not null,
   capability_id text not null,
-  input_hash text not null,
+  operation text,
+  resource_refs text,
+  input_hash text,
   decision text not null,
   result_summary text,
   created_at text not null
@@ -331,8 +335,8 @@ export class SqliteCupPersistence implements CupPersistence {
 
   async appendReceipt(receipt: Receipt): Promise<void> {
     await this.db.query(
-      'insert into cup_receipts (id, request_id, status, actor_id, actor_type, capability_id, input_hash, decision, result_summary, created_at) values (?,?,?,?,?,?,?,?,?,?)',
-      [receipt.id, receipt.decision.requestId, receipt.status, receipt.actor.id, receipt.actor.type, receipt.capability, receipt.inputHash, JSON.stringify(receipt.decision), JSON.stringify(receipt.resultSummary ?? null), receipt.createdAt],
+      'insert into cup_receipts (id, request_id, status, actor_id, actor_type, capability_id, operation, resource_refs, input_hash, decision, result_summary, created_at) values (?,?,?,?,?,?,?,?,?,?,?,?)',
+      [receipt.id, receipt.decision.requestId, receipt.status, receipt.actor.id, receipt.actor.type, receipt.capability, receipt.operation ?? null, JSON.stringify(receipt.resourceRefs ?? null), receipt.inputHash ?? null, JSON.stringify(receipt.decision), JSON.stringify(receipt.resultSummary ?? null), receipt.createdAt],
     );
   }
 
@@ -343,8 +347,19 @@ export class SqliteCupPersistence implements CupPersistence {
     if (query.capability) { clauses.push('capability_id = ?'); params.push(query.capability); }
     if (query.status) { clauses.push('status = ?'); params.push(query.status); }
     const where = clauses.length ? `where ${clauses.join(' and ')}` : '';
-    const result = await this.db.query<any>(`select id, status, actor_id, actor_type, capability_id, input_hash, decision, result_summary, created_at from cup_receipts ${where} order by created_at desc`, params);
-    return result.rows.map(row => ({ id: row.id, status: row.status, actor: { id: row.actor_id, type: row.actor_type }, capability: row.capability_id, inputHash: row.input_hash, decision: parseJson(row.decision) as Receipt['decision'], resultSummary: parseNullableJson(row.result_summary), createdAt: row.created_at }));
+    const result = await this.db.query<any>(`select id, status, actor_id, actor_type, capability_id, operation, resource_refs, input_hash, decision, result_summary, created_at from cup_receipts ${where} order by created_at desc`, params);
+    return result.rows.map(row => ({
+      id: row.id,
+      status: row.status,
+      actor: { id: row.actor_id, type: row.actor_type },
+      capability: row.capability_id,
+      operation: row.operation ?? undefined,
+      resourceRefs: parseNullableJson(row.resource_refs) as Receipt['resourceRefs'],
+      inputHash: row.input_hash ?? undefined,
+      decision: parseJson(row.decision) as Receipt['decision'],
+      resultSummary: parseNullableJson(row.result_summary),
+      createdAt: row.created_at,
+    }));
   }
 
   async appendDelegation(grant: DelegationGrant): Promise<void> {

@@ -12,7 +12,7 @@ The TypeScript declarations in `src/index.ts` are the source of truth. This page
 
 ### `CapabilityUI`
 
-- `new CapabilityUI(receipts?: ReceiptSink)` creates a runtime.
+- `new CapabilityUI(receipts | options)` creates a runtime. Options include `receipts`, `confirmationKey`, `writeDeniedReceipts`, and `summarizeResult`.
 - `register(resource)` registers a `Resource` or `Capability`.
 - `registerAdapter(adapter)` attaches a `ResourceAdapter` or `ExecutionAdapter` to a registered resource.
 - `authorize(request)` returns a `Decision`.
@@ -44,7 +44,8 @@ import {
 - `defineCapability(config)` adds `type: 'capability'` to a capability definition.
 - `inMemoryReceipts()` creates a development/test `MemoryReceiptSink`.
 - `createCapabilityUI(options)` creates a runtime, optionally registering resources and injecting a receipt sink.
-- `canonicalInputHash(input)` exposes the same canonical SHA-256 input hash used for confirmation binding.
+- `canonicalInputHash(input, confirmationKey?)` exposes the confirmation digest (HMAC-SHA256 when a key is passed, else SHA-256).
+- `stripReceiptContent(receipt)` and `scrubReceiptsForResource(receipts, resourceId)` drop summaries and confirmation material after a hard delete.
 - `verifyActionToken(view, token)` finds a token in an authorized view for client-side routing.
 - `conditions.purposeIs(value)` matches the request purpose.
 - `conditions.recipientCountAtMost(max)` checks an array named `recipients` in proposed input.
@@ -58,7 +59,7 @@ import {
 - `Policy`: principal, operation, resource, optional scope, conditions, obligations, priority, and expiry.
 - `Decision`: effect, reason code, matched policies, obligations, policy version, and request ID.
 - `AuthorizedView`: subject-specific resources, capabilities, and policy version.
-- `Receipt`: status, actor, capability, input hash, decision, result summary, and timestamp.
+- `Receipt`: status, actor, capability, optional `operation`, optional input hash, decision, result summary, and timestamp. Never includes the raw input payload.
 - `ReceiptQuery`: optional request, actor, capability, and status filters for receipt lookup.
 - `DelegationGrant`: source, recipient, capability, allowed operations, scope, purpose, and expiration.
 

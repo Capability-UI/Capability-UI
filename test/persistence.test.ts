@@ -50,8 +50,8 @@ test('sqlite persistence: appendReceipt + filtered receipts', async () => {
   const { p, close } = setup();
   const decision = { requestId: 'r1', effect: 'allow' as const, reasonCode: 'ALLOWED', matchedPolicies: [], obligations: [], policyVersion: 'policy-0' };
   const at = new Date().toISOString();
-  await p.appendReceipt({ id: 'rc1', status: 'succeeded', actor: { id: 'agent:coder', type: 'agent' }, capability: 'workspace.read', inputHash: 'h', decision, resultSummary: { ok: true }, createdAt: at } as Receipt);
-  await p.appendReceipt({ id: 'rc2', status: 'denied', actor: { id: 'agent:coder', type: 'agent' }, capability: 'workspace.bash', inputHash: 'h', decision: { ...decision, requestId: 'r2' }, createdAt: at } as Receipt);
+  await p.appendReceipt({ id: 'rc1', status: 'succeeded', actor: { id: 'agent:coder', type: 'agent' }, capability: 'workspace.read', operation: 'read', inputHash: 'h', decision, resultSummary: { id: 'w1' }, createdAt: at } as Receipt);
+  await p.appendReceipt({ id: 'rc2', status: 'denied', actor: { id: 'agent:coder', type: 'agent' }, capability: 'workspace.bash', operation: 'execute', decision: { ...decision, requestId: 'r2' }, createdAt: at } as Receipt);
 
   assert.equal((await p.receipts()).length, 2);
   const denied = await p.receipts({ status: 'denied' });
@@ -59,7 +59,10 @@ test('sqlite persistence: appendReceipt + filtered receipts', async () => {
   assert.equal(denied[0]?.capability, 'workspace.bash');
   const reads = await p.receipts({ capability: 'workspace.read' });
   assert.equal(reads.length, 1);
-  assert.deepEqual(reads[0]?.resultSummary, { ok: true });
+  assert.deepEqual(reads[0]?.resultSummary, { id: 'w1' });
+  assert.equal(reads[0]?.operation, 'read');
+  assert.equal(denied[0]?.operation, 'execute');
+  assert.equal(denied[0]?.inputHash, undefined);
   close();
 });
 
