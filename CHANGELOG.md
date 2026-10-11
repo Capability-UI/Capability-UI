@@ -14,10 +14,11 @@ Requires Node.js 22.5 or newer (`engines.node` is `>=22.5`, `.nvmrc` is `22`). C
 ### Receipts
 
 - New receipts always set `operation` (`read` from `cup.read`, and the capability operation from `cup.execute`). The field stays optional on the type so older stored rows still parse.
-- Policy denials on `read` and `execute` append a `denied` receipt with capability id, operation, actor, and reason code. Unauthenticated subjects are recorded as `{ id: 'anonymous', type: 'anonymous' }`, never the caller-supplied id. Denied receipts never store the input payload or a result summary. `writeDeniedReceipts` defaults on. A failure to persist a denied receipt never replaces `CUP_NOT_AUTHORIZED`.
+- Policy denials on `read` and `execute` append a `denied` receipt with capability id, operation, actor, and reason code. Unauthenticated subjects are recorded as `{ id: 'anonymous', type: 'anonymous' }`, never the caller-supplied id. Denied receipts never store the input payload or a result summary. `writeDeniedReceipts` defaults on. A failure to persist a denied receipt is logged and never replaces `CUP_NOT_AUTHORIZED`.
 - Receipts never store the raw input payload. Result summaries pass through `summarizeResult` (default: no summary for `delete`; ids and counts only otherwise). Arrays under `ids` / `*Ids` keep only string or number elements.
 - `stripReceiptContent`, `scrubReceiptsForResource`, `MemoryReceiptSink.scrubForResource`, `CapabilityUI.scrubForResource`, and `CupPersistence.scrubReceiptsForResource` drop summaries, confirmation, and input hashes. `CapabilityUI.scrubForResource` also scrubs cached idempotent receipts.
-- Call `migrateSqliteCupSchema` to upgrade an existing 0.2.0 SQLite database in place (one transaction, no receipt loss, idempotent, backfills `operation` from the capability suffix). Postgres hosts should apply `sql/002_cup_receipts_operation.sql`, which also seeds an `anonymous` subject so denied guest receipts do not fail the `cup_subjects` foreign key.
+- Call `migrateSqliteCupSchema` to upgrade an existing 0.2.0 SQLite database in place (one transaction, no receipt loss, idempotent, backfills `operation` from the capability suffix, and ensures `cup_subjects` exists). Postgres hosts should apply `sql/002_cup_receipts_operation.sql`, which also seeds an `anonymous` subject so denied guest receipts do not fail the `cup_subjects` foreign key.
+- `appendReceipt` upserts the actor into `cup_subjects` (`INSERT ... ON CONFLICT DO NOTHING` of id and type) in the same transaction before inserting the receipt, so denied receipts for a signed-in caller with no prior subject row persist. A denied-receipt write failure is logged and still never replaces `CUP_NOT_AUTHORIZED`.
 
 ### Operations
 

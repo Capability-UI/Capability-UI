@@ -466,7 +466,9 @@ export class CapabilityUI {
     delete receipt.resultSummary;
     if (this.shouldWriteDenied({ operation: receipt.operation ?? 'execute', capability: receipt.capability, actor: receipt.actor, reasonCode: receipt.decision.reasonCode, subject: undefined })) {
       try { await this.receipts.append(receipt); }
-      catch { /* A denied-receipt write failure must not replace the authorization error. */ }
+      catch (error) {
+        console.error('CUP denied-receipt write failed', error);
+      }
     }
     return receipt;
   }

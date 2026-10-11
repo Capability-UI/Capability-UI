@@ -163,6 +163,74 @@ test('sqlite persistence: scrubReceiptsForResource drops summaries', async () =>
   close();
 });
 
+function deniedReadReceipt(actorId: string, actorType: 'user' | 'agent' | 'service' | 'group' = 'user'): Receipt {
+  return {
+    id: 'denied-1',
+    status: 'denied',
+    actor: { id: actorId, type: actorType },
+    capability: 'notes.john',
+    operation: 'read',
+    decision: {
+      requestId: 'req-denied',
+      effect: 'deny',
+      reasonCode: 'NO_MATCHING_ALLOW',
+      matchedPolicies: [],
+      obligations: [],
+      policyVersion: 'policy-0',
+    },
+    createdAt: new Date().toISOString(),
+  } as Receipt;
+}
+
+test('sqlite appendReceipt persists a denied receipt for an authenticated actor with no prior subject row', async () => {
+  const { client, p, close } = setup();
+  const before = await client.query<{ id: string }>('select id from cup_subjects where id = ?', ['user:signed-in']);
+  assert.equal(before.rows.length, 0);
+  await p.appendReceipt(deniedReadReceipt('user:signed-in'));
+  const rows = await p.receipts({ actorId: 'user:signed-in', status: 'denied' });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0]?.id, 'denied-1');
+  assert.equal(rows[0]?.capability, 'notes.john');
+  const subject = await client.query<{ id: string; subject_type: string }>('select id, subject_type from cup_subjects where id = ?', ['user:signed-in']);
+  assert.equal(subject.rows[0]?.id, 'user:signed-in');
+  assert.equal(subject.rows[0]?.subject_type, 'user');
+  close();
+});
+
+test('postgres appendReceipt upserts a missing signed-in actor then inserts the denied receipt in one transaction', async () => {
+  const subjects = new Set<string>();
+  const inserted: string[] = [];
+  let inTxn = false;
+  const db = {
+    query: async <T>(sql: string, values?: readonly unknown[]) => {
+      const command = sql.trim().toLowerCase();
+      if (command === 'begin') { inTxn = true; return { rows: [] as T[] }; }
+      if (command === 'commit') { inTxn = false; return { rows: [] as T[] }; }
+      if (command === 'rollback') { inTxn = false; return { rows: [] as T[] }; }
+      if (/insert into cup_subjects/i.test(sql)) {
+        assert.equal(inTxn, true);
+        assert.match(sql, /on conflict \(id\) do nothing/i);
+        assert.equal(values?.[0], 'user:signed-in');
+        assert.equal(values?.[1], 'user');
+        subjects.add(String(values?.[0]));
+        return { rows: [] as T[] };
+      }
+      if (/insert into cup_receipts/i.test(sql)) {
+        assert.equal(inTxn, true);
+        const actorId = String(values?.[3]);
+        if (!subjects.has(actorId)) throw new Error('fk cup_receipts_actor_id_fkey');
+        inserted.push(String(values?.[0]));
+        return { rows: [] as T[] };
+      }
+      return { rows: [] as T[] };
+    },
+  };
+  const store = new PostgresPersistence(db);
+  await store.appendReceipt(deniedReadReceipt('user:signed-in'));
+  assert.ok(subjects.has('user:signed-in'));
+  assert.deepEqual(inserted, ['denied-1']);
+});
+
 test('postgres persistence: scrubReceiptsForResource issues an update', async () => {
   const calls: Array<{ sql: string; values?: readonly unknown[] }> = [];
   const db = {

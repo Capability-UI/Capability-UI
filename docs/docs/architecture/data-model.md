@@ -224,6 +224,12 @@ export class PostgresCupStore implements CupStore {
   }
 
   async appendReceipt(receipt: any): Promise<void> {
+    await this.db.query('begin');
+    await this.db.query(
+      `insert into cup_subjects (id, subject_type, authenticated, attributes)
+       values ($1, $2, true, '{}'::jsonb) on conflict (id) do nothing`,
+      [receipt.actor.id, receipt.actor.type],
+    );
     await this.db.query(
       `insert into cup_receipts
         (id, request_id, status, actor_id, actor_type, capability_id,
@@ -236,6 +242,7 @@ export class PostgresCupStore implements CupStore {
         JSON.stringify(receipt.resultSummary ?? null), receipt.createdAt,
       ],
     );
+    await this.db.query('commit');
   }
 
   async listActiveResources(): Promise<Resource[]> {

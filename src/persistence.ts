@@ -5,6 +5,24 @@ export interface SqlClient {
   query<T = unknown>(sql: string, values?: readonly unknown[]): Promise<{ rows: T[] }>;
 }
 
+async function inSqlTransaction(db: SqlClient, work: () => Promise<void>): Promise<void> {
+  await db.query('begin');
+  try {
+    await work();
+    await db.query('commit');
+  } catch (error) {
+    try { await db.query('rollback'); } catch { /* keep the original failure */ }
+    throw error;
+  }
+}
+
+function subjectRowFromActor(actor: Receipt['actor']): { id: string; type: string; authenticated: boolean } {
+  if (actor.type === 'anonymous' || actor.id === 'anonymous') {
+    return { id: actor.id, type: 'service', authenticated: false };
+  }
+  return { id: actor.id, type: actor.type, authenticated: true };
+}
+
 export interface CupPersistence {
   policyVersion(): Promise<string>;
   resources(): Promise<Resource[]>;
@@ -136,10 +154,17 @@ export class PostgresPersistence implements CupPersistence {
   }
 
   async appendReceipt(receipt: Receipt): Promise<void> {
-    await this.db.query(
-      'insert into cup_receipts (id, request_id, status, actor_id, actor_type, capability_id, operation, resource_refs, input_hash, decision, result_summary, created_at) values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10::jsonb,$11::jsonb,$12)',
-      [receipt.id, receipt.decision.requestId, receipt.status, receipt.actor.id, receipt.actor.type, receipt.capability, receipt.operation ?? null, JSON.stringify(receipt.resourceRefs ?? null), receipt.inputHash ?? null, JSON.stringify(receipt.decision), JSON.stringify(receipt.resultSummary ?? null), receipt.createdAt],
-    );
+    const actor = subjectRowFromActor(receipt.actor);
+    await inSqlTransaction(this.db, async () => {
+      await this.db.query(
+        'insert into cup_subjects (id, subject_type, authenticated, attributes) values ($1,$2,$3,$4::jsonb) on conflict (id) do nothing',
+        [actor.id, actor.type, actor.authenticated, '{}'],
+      );
+      await this.db.query(
+        'insert into cup_receipts (id, request_id, status, actor_id, actor_type, capability_id, operation, resource_refs, input_hash, decision, result_summary, created_at) values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10::jsonb,$11::jsonb,$12)',
+        [receipt.id, receipt.decision.requestId, receipt.status, receipt.actor.id, receipt.actor.type, receipt.capability, receipt.operation ?? null, JSON.stringify(receipt.resourceRefs ?? null), receipt.inputHash ?? null, JSON.stringify(receipt.decision), JSON.stringify(receipt.resultSummary ?? null), receipt.createdAt],
+      );
+    });
   }
 
   async receipts(query: { actorId?: string; capability?: string; status?: Receipt['status'] } = {}): Promise<Receipt[]> {
@@ -249,7 +274,7 @@ create table if not exists cup_receipts (
   id text primary key,
   request_id text not null,
   status text not null,
-  actor_id text not null,
+  actor_id text not null references cup_subjects(id),
   actor_type text not null,
   capability_id text not null,
   operation text,
@@ -267,6 +292,7 @@ create table if not exists cup_policy_revisions (
   updated_at text not null default (datetime('now'))
 );
 insert or ignore into cup_policy_revisions(singleton, version) values(1, 0);
+insert or ignore into cup_subjects (id, subject_type, authenticated, attributes) values ('anonymous', 'service', 0, '{}');
 `;
 
 function parseJson(text: unknown): unknown {
@@ -294,6 +320,7 @@ export interface NodeSqliteHandle {
 export function openNodeSqlite(location = ':memory:'): NodeSqliteHandle {
   const db = new DatabaseSync(location);
   db.exec('pragma journal_mode = WAL;');
+  db.exec('pragma foreign_keys = ON;');
   const client: SqlClient = {
     async query<T = unknown>(sql: string, values: readonly unknown[] = []): Promise<{ rows: T[] }> {
       const params = values.map(value => {
@@ -346,6 +373,16 @@ export async function migrateSqliteCupSchema(handle: NodeSqliteHandle): Promise<
   const rebuild = !!inputHash && Number(inputHash.notnull) === 1;
   handle.exec('BEGIN');
   try {
+    handle.exec(`
+      create table if not exists cup_subjects (
+        id text primary key,
+        subject_type text not null,
+        authenticated integer not null default 1,
+        attributes text not null default '{}',
+        created_at text not null default (datetime('now'))
+      );
+      insert or ignore into cup_subjects (id, subject_type, authenticated, attributes) values ('anonymous', 'service', 0, '{}');
+    `);
     if (rebuild) {
       handle.exec(`
         create table cup_receipts__v3 (
@@ -422,10 +459,17 @@ export class SqliteCupPersistence implements CupPersistence {
   }
 
   async appendReceipt(receipt: Receipt): Promise<void> {
-    await this.db.query(
-      'insert into cup_receipts (id, request_id, status, actor_id, actor_type, capability_id, operation, resource_refs, input_hash, decision, result_summary, created_at) values (?,?,?,?,?,?,?,?,?,?,?,?)',
-      [receipt.id, receipt.decision.requestId, receipt.status, receipt.actor.id, receipt.actor.type, receipt.capability, receipt.operation ?? null, JSON.stringify(receipt.resourceRefs ?? null), receipt.inputHash ?? null, JSON.stringify(receipt.decision), JSON.stringify(receipt.resultSummary ?? null), receipt.createdAt],
-    );
+    const actor = subjectRowFromActor(receipt.actor);
+    await inSqlTransaction(this.db, async () => {
+      await this.db.query(
+        'insert into cup_subjects (id, subject_type, authenticated, attributes) values (?,?,?,?) on conflict(id) do nothing',
+        [actor.id, actor.type, actor.authenticated, '{}'],
+      );
+      await this.db.query(
+        'insert into cup_receipts (id, request_id, status, actor_id, actor_type, capability_id, operation, resource_refs, input_hash, decision, result_summary, created_at) values (?,?,?,?,?,?,?,?,?,?,?,?)',
+        [receipt.id, receipt.decision.requestId, receipt.status, receipt.actor.id, receipt.actor.type, receipt.capability, receipt.operation ?? null, JSON.stringify(receipt.resourceRefs ?? null), receipt.inputHash ?? null, JSON.stringify(receipt.decision), JSON.stringify(receipt.resultSummary ?? null), receipt.createdAt],
+      );
+    });
   }
 
   async receipts(query: { actorId?: string; capability?: string; status?: Receipt['status'] } = {}): Promise<Receipt[]> {

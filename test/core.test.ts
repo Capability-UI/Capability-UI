@@ -228,8 +228,10 @@ test('postgres persistence uses parameterized receipt writes', async () => {
   const db = { query: async <T>(sql: string, values?: readonly unknown[]) => { calls.push({ sql, values }); return { rows: [] as T[] }; } };
   const store = new PostgresPersistence(db);
   await store.appendReceipt({ id: 'r1', status: 'denied', actor: john, capability: 'mail.send', inputHash: 'hash', decision: { requestId: 'req', effect: 'deny', reasonCode: 'NO_MATCHING_ALLOW', matchedPolicies: [], obligations: [], policyVersion: 'policy-1' }, createdAt: new Date().toISOString() });
-  assert.match(calls[0]!.sql, /values \(\$1,\$2/);
-  assert.equal(calls[0]!.values?.[0], 'r1');
+  const receiptInsert = calls.find(call => /insert into cup_receipts/i.test(call.sql));
+  assert.ok(receiptInsert);
+  assert.match(receiptInsert.sql, /values \(\$1,\$2/);
+  assert.equal(receiptInsert.values?.[0], 'r1');
   assert.match(CUP_POSTGRES_SCHEMA, /create table if not exists cup_prepared_actions/);
 });
 
@@ -571,14 +573,24 @@ test('hashesMatch uses equal-length timing-safe compare', () => {
 });
 
 test('denied receipt write failures do not replace CUP_NOT_AUTHORIZED', async () => {
-  const cup = new CapabilityUI({
-    receipts: {
-      async append() { throw new Error('fk_violation'); },
-      all() { return []; },
-    },
-  });
-  cup.register({ ...notes(), read: async () => [{ title: 'Brief' }] });
-  await assert.rejects(() => cup.read({ subject: subject('user:victim', {}, false), resource: 'notes.john', context: {} }), /CUP_NOT_AUTHORIZED:NO_ACCOUNT/);
+  const logged: unknown[] = [];
+  const original = console.error;
+  console.error = (...args: unknown[]) => { logged.push(args); };
+  try {
+    const cup = new CapabilityUI({
+      receipts: {
+        async append() { throw new Error('fk_violation'); },
+        all() { return []; },
+      },
+    });
+    cup.register({ ...notes(), read: async () => [{ title: 'Brief' }] });
+    await assert.rejects(() => cup.read({ subject: subject('user:victim', {}, false), resource: 'notes.john', context: {} }), /CUP_NOT_AUTHORIZED:NO_ACCOUNT/);
+    assert.equal(logged.length, 1);
+    assert.match(String(logged[0]), /CUP denied-receipt write failed/);
+    assert.match(String(logged[0]), /fk_violation/);
+  } finally {
+    console.error = original;
+  }
 });
 
 test('scrubForResource also scrubs cached idempotent receipts', async () => {
